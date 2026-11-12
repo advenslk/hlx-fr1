@@ -1,0 +1,3841 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0c0d14">
+<title>HelzerX Cloud · VPS Control Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-main: #0c0d14;
+  --bg-sidebar: #101118;
+  --bg-topbar: #12131b;
+  --bg-surface: #151622;
+  --bg-card: #161723;
+  --bg-card-hover: #1e1f2f;
+  --bg-inner: #0f1018;
+  
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-card: rgba(255, 255, 255, 0.07);
+  --border-card-hover: rgba(168, 85, 247, 0.35);
+  --border-purple-glow: rgba(192, 132, 252, 0.75);
+
+  --purple-primary: #a855f7;
+  --purple-light: #c084fc;
+  --purple-vibrant: #9333ea;
+  --purple-dark: #3b0764;
+  --purple-tint: rgba(168, 85, 247, 0.12);
+  --purple-glow: rgba(168, 85, 247, 0.4);
+
+  --text-main: #f8fafc;
+  --text-muted: #8e8b9f;
+  --text-dim: #626074;
+
+  --accent-green: #4ade80;
+  --accent-orange: #fb923c;
+  --accent-red: #f87171;
+  --accent-cyan: #38bdf8;
+  --accent-blue: #60a5fa;
+
+  --radius-card: 20px;
+  --radius-btn: 12px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* Full Viewport App Container (No outer borders, edge-to-edge) */
+.app-container {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: radial-gradient(circle at 80% 0%, rgba(147, 51, 234, 0.08), transparent 40%),
+              radial-gradient(circle at 15% 90%, rgba(56, 189, 248, 0.04), transparent 40%),
+              var(--bg-main);
+}
+
+/* Top Navigation Bar */
+.top-nav {
+  height: 72px;
+  width: 100%;
+  background: var(--bg-topbar);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  gap: 20px;
+  flex-shrink: 0;
+  z-index: 30;
+  backdrop-filter: blur(12px);
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  color: inherit;
+  min-width: 220px;
+}
+
+.brand-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #c084fc, #9333ea 60%, #581c87);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 0 22px rgba(168, 85, 247, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+}
+
+.brand-icon svg {
+  width: 22px;
+  height: 22px;
+  color: #fff;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+}
+
+.brand-title-wrap b {
+  display: block;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #fff;
+}
+
+.brand-title-wrap span {
+  display: block;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* Center Search Pill */
+.nav-search-pill {
+  flex: 1;
+  max-width: 460px;
+  height: 42px;
+  background: #171822;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  padding: 0 6px 0 18px;
+  justify-content: space-between;
+  transition: all 0.2s ease;
+}
+
+.nav-search-pill:focus-within {
+  border-color: rgba(168, 85, 247, 0.45);
+  box-shadow: 0 0 18px rgba(168, 85, 247, 0.18);
+  background: #1a1c27;
+}
+
+.nav-search-pill input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-size: 12.5px;
+  font-family: inherit;
+  width: 100%;
+}
+
+.nav-search-pill input::placeholder {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.search-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: #232431;
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.search-btn:hover {
+  background: #2b2c3d;
+  color: #fff;
+}
+
+/* Nav Actions */
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nav-pill-dropdown {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: #171822;
+  border: 1px solid var(--border-subtle);
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.nav-pill-dropdown:hover {
+  background: #202230;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.nav-circle-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #171822;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s;
+}
+
+.nav-circle-btn:hover {
+  background: #202230;
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.nav-circle-btn .notification-dot {
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  width: 6px;
+  height: 6px;
+  background: var(--purple-light);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--purple-light);
+}
+
+.user-profile-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 6px;
+  cursor: pointer;
+  position: relative;
+}
+
+.avatar-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(168, 85, 247, 0.4);
+  background: linear-gradient(135deg, #38bdf8, #818cf8);
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 0 14px rgba(168, 85, 247, 0.25);
+}
+
+.avatar-circle img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* User Menu Dropdown */
+.user-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  width: 220px;
+  background: #161722;
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  padding: 8px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(168, 85, 247, 0.15);
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 50;
+  animation: dropIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.user-menu-dropdown.show {
+  display: flex;
+}
+
+@keyframes dropIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.15s;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+}
+
+.user-menu-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.user-menu-item.danger {
+  color: var(--accent-red);
+}
+.user-menu-item.danger:hover {
+  background: rgba(248, 113, 113, 0.1);
+}
+
+/* Body (Sidebar + Content Workspace) */
+.app-workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Left Sidebar */
+.app-sidebar {
+  width: 220px;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  padding: 20px 12px 18px;
+  gap: 5px;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.sidebar-section-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 0.14em;
+  padding: 14px 10px 5px;
+  text-transform: uppercase;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+}
+
+.sidebar-item svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: color 0.2s;
+}
+
+.sidebar-item:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.sidebar-item:hover svg {
+  color: #fff;
+}
+
+.sidebar-item.active {
+  background: rgba(168, 85, 247, 0.14);
+  color: #fff;
+  box-shadow: inset 3px 0 0 var(--purple-light);
+}
+
+.sidebar-item.active svg {
+  color: var(--purple-light);
+}
+
+.badge-ai-plus {
+  margin-left: auto;
+  font-size: 13px;
+  color: #f472b6;
+  font-weight: 800;
+  filter: drop-shadow(0 0 6px rgba(244, 114, 182, 0.6));
+}
+
+.cluster-node-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cluster-node-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: #fff;
+}
+
+.node-bullet {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.node-bullet.b1 { background: rgba(244, 114, 182, 0.2); color: #f472b6; }
+.node-bullet.b2 { background: rgba(56, 189, 248, 0.2); color: #38bdf8; }
+.node-bullet.b3 { background: rgba(168, 85, 247, 0.2); color: #c084fc; }
+
+.show-more-link {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.show-more-link:hover {
+  color: #fff;
+}
+
+.sidebar-bottom-cta {
+  margin-top: auto;
+  padding-top: 18px;
+}
+
+.btn-upgrade-pro {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  background: linear-gradient(135deg, rgba(147, 51, 234, 0.3), rgba(76, 29, 149, 0.18));
+  color: #f1e8ff;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.25s;
+  box-shadow: 0 4px 18px rgba(147, 51, 234, 0.2);
+}
+
+.btn-upgrade-pro:hover {
+  border-color: var(--purple-light);
+  background: linear-gradient(135deg, rgba(147, 51, 234, 0.5), rgba(76, 29, 149, 0.35));
+  box-shadow: 0 6px 26px rgba(168, 85, 247, 0.35);
+  transform: translateY(-1px);
+}
+
+/* Main Dashboard Workspace */
+.main-workspace {
+  flex: 1;
+  padding: 24px 32px 40px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* View Sections */
+.view-panel {
+  display: none;
+  flex-direction: column;
+  gap: 22px;
+  animation: fadeIn 0.25s ease;
+}
+
+.view-panel.active {
+  display: flex;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Greeting Section */
+.greeting-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2px;
+}
+
+.greeting-text h1 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.greeting-text h2 {
+  font-size: 28px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.025em;
+}
+
+.greeting-quick-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.live-indicator-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(74, 222, 128, 0.1);
+  border: 1px solid rgba(74, 222, 128, 0.25);
+  color: var(--accent-green);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-green);
+  box-shadow: 0 0 10px var(--accent-green);
+  animation: pulseAnim 2s infinite ease-in-out;
+}
+
+@keyframes pulseAnim {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+/* Top 3-Column Grid */
+.grid-top-row {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1.45fr) 300px;
+  gap: 18px;
+  align-items: stretch;
+}
+
+/* Common Card Styling */
+.dash-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border-card);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.dash-card:hover {
+  border-color: var(--border-card-hover);
+}
+
+/* Card 1: VPS Compute Fleet */
+.card-instances-stat {
+  justify-content: space-between;
+}
+
+.card-header-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.badge-tag-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.badge-tag-wrap svg {
+  width: 14px;
+  height: 14px;
+  color: var(--purple-light);
+}
+
+.card-view-all {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.card-view-all:hover {
+  color: #fff;
+}
+
+.stat-big-number {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff;
+  line-height: 1.1;
+  margin-bottom: 3px;
+}
+
+.stat-sub-text {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.vertical-bars-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  height: 100px;
+  margin-bottom: 12px;
+  padding-left: 10px;
+}
+
+.v-bar-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.v-bar-capsule {
+  width: 58px;
+  border-radius: 20px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.v-bar-capsule.striped {
+  height: 82px;
+  background: repeating-linear-gradient(
+    -45deg,
+    #581c87,
+    #581c87 4px,
+    #7e22ce 4px,
+    #7e22ce 8px
+  );
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  box-shadow: 0 4px 14px rgba(126, 34, 206, 0.3);
+}
+
+.v-bar-capsule.striped span {
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  background: rgba(18, 19, 25, 0.75);
+  padding: 2px 6px;
+  border-radius: 6px;
+  backdrop-filter: blur(4px);
+}
+
+.v-bar-capsule.solid {
+  width: 28px;
+  height: 60px;
+  background: #a855f7;
+  border-radius: 14px;
+  box-shadow: 0 4px 16px rgba(168, 85, 247, 0.4);
+}
+
+.v-bar-capsule.solid-subtle {
+  width: 14px;
+  height: 40px;
+  background: #6b21a8;
+  border-radius: 10px;
+}
+
+.v-bar-legend {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  font-weight: 600;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.v-bar-legend b {
+  color: var(--text-muted);
+}
+
+/* Card 2: Center 3D Hero Card (HelzerX Cloud Engine) */
+.card-hero-3d {
+  background: radial-gradient(ellipse at 50% 120%, rgba(147, 51, 234, 0.28), transparent 70%), #14141e;
+  border: 1.5px solid var(--border-purple-glow);
+  box-shadow: 
+    0 0 35px -5px rgba(168, 85, 247, 0.4),
+    inset 0 0 25px rgba(168, 85, 247, 0.15),
+    0 15px 40px rgba(0, 0, 0, 0.45);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.hero-3d-header {
+  position: relative;
+  z-index: 5;
+  text-align: center;
+  padding-top: 4px;
+}
+
+.hero-3d-title {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: linear-gradient(90deg, #38bdf8, #818cf8 40%, #c084fc 80%, #f472b6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin-bottom: 3px;
+  filter: drop-shadow(0 2px 10px rgba(168, 85, 247, 0.35));
+}
+
+.hero-3d-subtitle {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* Interactive 3D Canvas Container */
+.hero-3d-canvas-wrap {
+  flex: 1;
+  min-height: 180px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#hero3dCanvas {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+  display: block;
+  cursor: grab;
+}
+
+#hero3dCanvas:active {
+  cursor: grabbing;
+}
+
+/* Card 3: Right Automated Operations Column */
+.card-calendar-activity {
+  background: #171822;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.cal-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cal-month-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.cal-arrow-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 4px;
+}
+
+.cal-arrow-btn:hover {
+  color: #fff;
+}
+
+.cal-days-strip {
+  display: flex;
+  justify-content: space-between;
+  background: #13141d;
+  border-radius: 14px;
+  padding: 8px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.cal-day-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 38px;
+  cursor: pointer;
+}
+
+.cal-day-name {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.cal-day-num {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  transition: all 0.2s;
+}
+
+.cal-day-col.active .cal-day-name {
+  color: var(--purple-light);
+}
+
+.cal-day-col.active .cal-day-num {
+  background: var(--purple-primary);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.6);
+}
+
+/* Ops Activity Items */
+.activity-mini-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.activity-mini-card {
+  background: #1e1f2c;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 10px 12px;
+  transition: all 0.2s;
+}
+
+.activity-mini-card:hover {
+  border-color: rgba(168, 85, 247, 0.35);
+  transform: translateX(2px);
+}
+
+.act-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.act-title-row b {
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.act-menu-dots {
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.act-desc {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 8px;
+}
+
+.act-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.act-avatars {
+  display: flex;
+}
+
+.mini-av {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid #1e1f2c;
+  margin-left: -5px;
+  background: #64748b;
+  display: grid;
+  place-items: center;
+  font-size: 8px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.mini-av:first-child { margin-left: 0; }
+.mini-av.av1 { background: #ec4899; }
+.mini-av.av2 { background: #38bdf8; }
+.mini-av.av3 { background: #a855f7; }
+
+.act-time {
+  font-size: 10px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-create-activity {
+  width: 100%;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  background: linear-gradient(135deg, #a855f7, #7e22ce);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(168, 85, 247, 0.3);
+  transition: all 0.2s;
+}
+
+.btn-create-activity:hover {
+  background: linear-gradient(135deg, #c084fc, #9333ea);
+  box-shadow: 0 6px 22px rgba(168, 85, 247, 0.5);
+  transform: translateY(-1px);
+}
+
+/* Bottom Grid (2x2 Real Cloud Stats + Cluster Matrix) */
+.grid-bottom-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1.25fr);
+  gap: 18px;
+}
+
+/* 2x2 Mini Cloud Stat Cards */
+.subgrid-2x2-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.mini-stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 125px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s, border-color 0.2s;
+}
+
+.mini-stat-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(168, 85, 247, 0.3);
+}
+
+.mini-stat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mini-stat-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.mini-stat-badge svg {
+  width: 13px;
+  height: 13px;
+  color: var(--purple-light);
+}
+
+.mini-stat-value {
+  font-size: 26px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.03em;
+  margin: 6px 0 2px;
+}
+
+.mini-stat-delta {
+  font-size: 10.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mini-stat-delta.positive {
+  color: var(--accent-green);
+}
+
+.mini-stat-delta.subtle {
+  color: var(--purple-light);
+}
+
+.mini-stat-delta.negative {
+  color: var(--accent-red);
+}
+
+/* Cluster Activity Matrix Heatmap */
+.card-heatmap-panel {
+  background: var(--bg-card);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border-card);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.heatmap-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  justify-content: flex-end;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.legend-dot.l-low { background: #262438; }
+.legend-dot.l-med { background: #581c87; }
+.legend-dot.l-high { background: #a855f7; }
+.legend-dot.l-best { background: #d8b4fe; }
+
+.heatmap-matrix-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.matrix-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.matrix-row-label {
+  width: 44px;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-align: right;
+  padding-right: 4px;
+}
+
+.matrix-cells-container {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 6px;
+  flex: 1;
+}
+
+.matrix-cell {
+  height: 22px;
+  border-radius: 6px;
+  background: #232233;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+  position: relative;
+}
+
+.matrix-cell:hover {
+  transform: scale(1.15);
+  z-index: 2;
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.6);
+}
+
+.matrix-cell.c0 { background: #1c1b28; }
+.matrix-cell.c1 { background: #2c2444; }
+.matrix-cell.c2 { background: #581c87; }
+.matrix-cell.c3 { background: #7e22ce; }
+.matrix-cell.c4 { background: #a855f7; box-shadow: 0 0 6px rgba(168, 85, 247, 0.4); }
+.matrix-cell.c5 { background: #c084fc; box-shadow: 0 0 10px rgba(192, 132, 252, 0.6); }
+
+.matrix-dates-row {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 6px;
+  margin-left: 48px;
+  margin-top: 4px;
+}
+
+.matrix-date-num {
+  text-align: center;
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+/* Dedicated Instance Management Section */
+.section-instances-mgmt {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.instances-mgmt-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.instances-mgmt-header h3 {
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+
+.instances-mgmt-header p {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.instances-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.filter-chip:hover, .filter-chip.active {
+  background: rgba(168, 85, 247, 0.18);
+  border-color: rgba(168, 85, 247, 0.4);
+  color: #fff;
+}
+
+.instances-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 18px;
+}
+
+.instance-card-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+  transition: all 0.25s;
+  position: relative;
+  overflow: hidden;
+}
+
+.instance-card-item:hover {
+  border-color: var(--border-purple-glow);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.4), 0 0 20px rgba(168, 85, 247, 0.15);
+}
+
+.instance-top-info {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.instance-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.instance-icon-orb {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: rgba(168, 85, 247, 0.12);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  color: var(--purple-light);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.instance-icon-orb svg {
+  width: 20px;
+  height: 20px;
+}
+
+.instance-title-group h4 {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 2px;
+}
+
+.instance-title-group span {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.status-badge {
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.status-badge.provisioned {
+  background: rgba(74, 222, 128, 0.12);
+  border: 1px solid rgba(74, 222, 128, 0.3);
+  color: var(--accent-green);
+}
+
+.status-badge.suspended, .status-badge.stopped {
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  color: var(--accent-red);
+}
+
+.status-badge.provisioning, .status-badge.pending {
+  background: rgba(251, 146, 60, 0.12);
+  border: 1px solid rgba(251, 146, 60, 0.3);
+  color: var(--accent-orange);
+}
+
+.instance-specs-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  background: var(--bg-inner);
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.spec-box {
+  display: flex;
+  flex-direction: column;
+}
+
+.spec-box small {
+  font-size: 9.5px;
+  color: var(--text-dim);
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.spec-box b {
+  font-size: 12px;
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.instance-actions-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-ctrl {
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #1f202e;
+  color: #fff;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-ctrl:hover {
+  background: #2a2b3d;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.btn-ctrl.primary {
+  background: linear-gradient(135deg, #a855f7, #7e22ce);
+  border: none;
+  box-shadow: 0 4px 14px rgba(168, 85, 247, 0.3);
+}
+
+.btn-ctrl.primary:hover {
+  background: linear-gradient(135deg, #c084fc, #9333ea);
+  box-shadow: 0 6px 18px rgba(168, 85, 247, 0.45);
+}
+
+.btn-ctrl.danger {
+  color: var(--accent-red);
+  border-color: rgba(248, 113, 113, 0.3);
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.btn-ctrl:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.empty-instances-state {
+  padding: 50px 20px;
+  text-align: center;
+  background: var(--bg-card);
+  border-radius: var(--radius-card);
+  border: 1px dashed rgba(168, 85, 247, 0.3);
+  grid-column: 1 / -1;
+}
+
+.empty-instances-state b {
+  font-size: 16px;
+  color: #fff;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.empty-instances-state p {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  max-width: 480px;
+  margin: 0 auto 18px;
+}
+
+/* Telemetry & Monitoring Panel View */
+.monitoring-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+}
+
+.monitor-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.monitor-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.gauge-bar-outer {
+  width: 100%;
+  height: 10px;
+  background: #11121b;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.gauge-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #38bdf8, #a855f7);
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
+  transition: width 0.5s ease;
+}
+
+/* Security & SSH Keys Panel View */
+.security-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 18px;
+}
+
+.security-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.security-box h4 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.security-box p {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+/* Fullscreen Terminal View */
+.standalone-terminal-card {
+  background: #090a10;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.terminal-controls-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #12131d;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-wrap: wrap;
+}
+
+.terminal-preset-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: #c084fc;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  transition: all 0.15s;
+}
+
+.terminal-preset-btn:hover {
+  background: rgba(168, 85, 247, 0.2);
+  color: #fff;
+}
+
+/* Minecraft Specialized Styling in Control Center */
+.instance-card-item.minecraft {
+  border-color: rgba(168, 85, 247, 0.25);
+  background: radial-gradient(circle at 90% 10%, rgba(168, 85, 247, 0.1), transparent 50%), var(--bg-card);
+}
+.instance-card-item.minecraft:hover {
+  border-color: rgba(192, 132, 252, 0.65);
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.5), 0 0 25px rgba(168, 85, 247, 0.25);
+}
+.instance-icon-orb.minecraft {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(52, 211, 153, 0.4);
+  color: #34d399;
+}
+.mc-address-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #c084fc;
+  margin-top: 4px;
+}
+.mc-address-pill button {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+.mc-address-pill button:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+.mc-cmd-chips-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.mc-cmd-chip {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 10.5px;
+  color: var(--purple-light);
+  font-family: 'JetBrains Mono', monospace;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mc-cmd-chip:hover {
+  background: rgba(168, 85, 247, 0.2);
+  border-color: rgba(168, 85, 247, 0.4);
+  color: #fff;
+}
+.mc-deploy-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.mc-deploy-form-group label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #e2e8f0;
+  text-transform: uppercase;
+}
+.mc-deploy-form-group input, .mc-deploy-form-group select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 0 14px;
+  background: rgba(15, 17, 26, 0.85);
+  color: #fff;
+  font-size: 12.5px;
+  font-family: inherit;
+  outline: none;
+}
+.mc-deploy-form-group input:focus, .mc-deploy-form-group select:focus {
+  border-color: rgba(168, 85, 247, 0.6);
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.15);
+}
+
+/* VPS Control Center Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 9, 14, 0.88);
+  backdrop-filter: blur(14px);
+  z-index: 100;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.modal-overlay.open {
+  display: flex;
+}
+
+.modal-window {
+  width: min(880px, 100%);
+  max-height: 92vh;
+  background: #141520;
+  border-radius: 24px;
+  border: 1.5px solid var(--border-purple-glow);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.8), 0 0 45px rgba(168, 85, 247, 0.25);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalPop 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalPop {
+  from { opacity: 0; transform: scale(0.96) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.modal-header {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #161724;
+}
+
+.modal-header h3 {
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.modal-header p {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.modal-close-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border-subtle);
+  background: #1d1e2b;
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.modal-close-btn:hover {
+  background: #252637;
+  color: #fff;
+}
+
+.modal-content-scroll {
+  padding: 22px 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Modal Telemetry */
+.telemetry-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.telemetry-card {
+  background: #1a1b28;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.telemetry-card small {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.telemetry-card strong {
+  display: block;
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+  margin-top: 4px;
+}
+
+.modal-section-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.power-buttons-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.snapshot-input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.snapshot-input-group input {
+  flex: 1;
+  background: #10111a;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: #fff;
+  font-size: 12px;
+  outline: none;
+}
+
+.snapshot-input-group input:focus {
+  border-color: var(--purple-light);
+}
+
+.snapshots-list-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.snap-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #1e1f2d;
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: #d8b4fe;
+}
+
+.snap-chip button {
+  background: none;
+  border: none;
+  color: var(--accent-red);
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+}
+
+/* Terminal Console in Modal */
+.terminal-block {
+  background: #090a10;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.terminal-header {
+  padding: 8px 14px;
+  background: #13141f;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.terminal-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.terminal-dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.terminal-dots span:nth-child(1) { background: #ef4444; }
+.terminal-dots span:nth-child(2) { background: #eab308; }
+.terminal-dots span:nth-child(3) { background: #22c55e; }
+
+.terminal-screen {
+  padding: 14px;
+  min-height: 120px;
+  max-height: 220px;
+  overflow-y: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: #cbd5e1;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.terminal-input-form {
+  display: flex;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 8px;
+  background: #0e0f17;
+  gap: 8px;
+}
+
+.terminal-input-form input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  padding: 4px 8px;
+}
+
+/* Toast Notice */
+.toast-notice {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translate(-50%, 40px);
+  opacity: 0;
+  pointer-events: none;
+  background: #1d1e2b;
+  border: 1px solid var(--purple-primary);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 20px rgba(168, 85, 247, 0.3);
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  z-index: 200;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toast-notice.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.toast-notice.error {
+  border-color: var(--accent-red);
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+  .grid-top-row {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+  .card-calendar-activity {
+    grid-column: 1 / -1;
+  }
+  .grid-bottom-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-workspace {
+    flex-direction: column;
+  }
+  .app-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 10px 16px;
+    gap: 8px;
+  }
+  .sidebar-section-label, .cluster-node-item, .show-more-link, .sidebar-bottom-cta {
+    display: none;
+  }
+  .sidebar-item {
+    padding: 8px 12px;
+    white-space: nowrap;
+  }
+  .grid-top-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .top-nav {
+    padding: 0 14px;
+    height: 64px;
+  }
+  .nav-search-pill {
+    display: none;
+  }
+  .nav-pill-dropdown {
+    display: none;
+  }
+  .main-workspace {
+    padding: 16px 14px 28px;
+  }
+  .subgrid-2x2-stats {
+    grid-template-columns: 1fr;
+  }
+  .telemetry-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+</style>
+</head>
+<body>
+
+<div class="app-container">
+
+  <!-- Top Navigation Bar -->
+  <header class="top-nav">
+    <a href="/control" class="nav-brand" title="HelzerX Control Dashboard">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/>
+          <line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+        </svg>
+      </div>
+      <div class="brand-title-wrap">
+        <b>HelzerX Cloud</b>
+        <span>VPS Infrastructure Engine</span>
+      </div>
+    </a>
+
+    <!-- Center Search Pill -->
+    <div class="nav-search-pill">
+      <input type="text" id="clusterSearchInput" placeholder="Search VPS by hostname, VMID, or Proxmox node…" aria-label="Search cluster">
+      <button class="search-btn" id="clusterSearchBtn" aria-label="Search">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Right Controls -->
+    <div class="nav-actions">
+      <div class="nav-pill-dropdown" id="nodeSelectorPill" title="Switch cluster node">
+        <span id="activeNodeLabel">hlx-infra-02 (Proxmox)</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+
+      <button class="nav-circle-btn" id="refreshDashboardBtn" title="Sync live status from Proxmox">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+      </button>
+
+      <button class="nav-circle-btn" id="notificationsBtn" title="System alerts">
+        <div class="notification-dot"></div>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+      </button>
+
+      <!-- Profile Avatar with Menu -->
+      <div class="user-profile-badge" id="profileBadge">
+        <div class="avatar-circle">
+          <img id="userAvatarImg" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=128&q=80" alt="Avatar">
+        </div>
+        <div class="user-menu-dropdown" id="userMenuDropdown">
+          <div style="padding:6px 12px;border-bottom:1px solid rgba(255,255,255,0.06);margin-bottom:4px">
+            <b id="menuUserName" style="display:block;font-size:12.5px;color:#fff">User</b>
+            <small id="menuUserId" style="color:var(--text-muted);font-size:10px">ID: —</small>
+          </div>
+          <button class="user-menu-item" onclick="switchView('instances')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/></svg>
+            <span>My Instances</span>
+          </button>
+          <a class="user-menu-item" href="/#rewards">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M8 10h8"/></svg>
+            <span>HZL Rewards</span>
+          </a>
+          <a class="user-menu-item" href="https://discord.com/" target="_blank" rel="noopener noreferrer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            <span>Discord Support</span>
+          </a>
+          <button class="user-menu-item danger" id="btnLogout">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Workspace Body -->
+  <div class="app-workspace">
+    
+    <!-- Sidebar -->
+    <aside class="app-sidebar">
+      <div class="sidebar-section-label">VPS INFRASTRUCTURE</div>
+      <button class="sidebar-item active" data-nav="dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/>
+        </svg>
+        <span>Overview</span>
+      </button>
+      <button class="sidebar-item" data-nav="instances">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+        </svg>
+        <span>VPS Fleet</span>
+      </button>
+      <button class="sidebar-item" data-nav="monitoring">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        <span>Telemetry</span>
+      </button>
+      <button class="sidebar-item" data-nav="terminal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
+        </svg>
+        <span>Root Shell</span>
+      </button>
+      <button class="sidebar-item" data-nav="security">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        <span>Firewall & Keys</span>
+      </button>
+
+      <div class="sidebar-section-label">STORAGE & BACKUPS</div>
+      <button class="sidebar-item" data-nav="todo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+        <span>Snapshots</span>
+      </button>
+      <button class="sidebar-item" data-nav="ai">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+        </svg>
+        <span>Proxmox AI</span>
+        <span class="badge-ai-plus">✦</span>
+      </button>
+
+      <div class="sidebar-section-label">PROXMOX CLUSTER</div>
+      <div class="cluster-node-item" onclick="selectNode('hlx-infra-01')">
+        <span class="node-bullet b1">01</span>
+        <span>hlx-infra-01 (JP)</span>
+      </div>
+      <div class="cluster-node-item" onclick="selectNode('hlx-infra-02')">
+        <span class="node-bullet b2">02</span>
+        <span>hlx-infra-02 (SG)</span>
+      </div>
+      <div class="cluster-node-item" onclick="selectNode('hlx-storage-01')">
+        <span class="node-bullet b3">NV</span>
+        <span>hlx-storage-nvme</span>
+      </div>
+      <div class="show-more-link" onclick="switchView('monitoring')">
+        <span>Cluster health (Online)</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+
+      <div class="sidebar-bottom-cta">
+        <button class="btn-upgrade-pro" id="upgradeProBtn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+          </svg>
+          <span>Deploy New VPS</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Workspace Area -->
+    <main class="main-workspace">
+
+      <!-- View 1: DASHBOARD (Overview - 100% VPS Infrastructure Focus) -->
+      <section class="view-panel active" id="view-dashboard">
+
+        <!-- Greeting Bar -->
+        <div class="greeting-section">
+          <div class="greeting-text">
+            <h1 id="welcomeGreeting">Hi, Member!</h1>
+            <h2>VPS Infrastructure Engine</h2>
+          </div>
+          <div class="greeting-quick-meta">
+            <div class="live-indicator-pill">
+              <span class="pulse-dot"></span>
+              <span id="hzlBalancePill">0 HZL Balance</span>
+            </div>
+            <button class="btn-ctrl primary" onclick="openMinecraftDeployModal()">
+              <span>+ Deploy Minecraft</span>
+            </button>
+            <a href="/" class="btn-ctrl" style="text-decoration:none">
+              <span>+ Deploy VPS</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- Top 3-Column Row: VPS Fleet Stats, 3D Cloud Engine, Ops Schedule -->
+        <div class="grid-top-row">
+
+          <!-- Card 1: VPS Fleet Resources -->
+          <article class="dash-card card-instances-stat">
+            <div class="card-header-line">
+              <div class="badge-tag-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/>
+                </svg>
+                <span>VPS Fleet</span>
+              </div>
+              <a class="card-view-all" onclick="switchView('instances')">
+                <span>View all</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+              </a>
+            </div>
+
+            <div>
+              <div class="stat-big-number" id="statStudentCount">0</div>
+              <div class="stat-sub-text">Active compute instances & containers</div>
+            </div>
+
+            <div class="vertical-bars-chart">
+              <div class="v-bar-item">
+                <div class="v-bar-capsule striped">
+                  <span id="stripedBarValue">100%</span>
+                </div>
+              </div>
+              <div class="v-bar-item">
+                <div class="v-bar-capsule solid"></div>
+              </div>
+              <div class="v-bar-item">
+                <div class="v-bar-capsule solid-subtle"></div>
+              </div>
+            </div>
+
+            <div class="v-bar-legend">
+              <span>Online Uptime</span>
+              <span><b>LXC</b> KVM</span>
+            </div>
+          </article>
+
+          <!-- Card 2: 3D HelzerX Cloud Engine Hero Card -->
+          <article class="dash-card card-hero-3d">
+            <div class="hero-3d-header">
+              <div class="hero-3d-title">HelzerX Cloud Engine</div>
+              <div class="hero-3d-subtitle">High-Speed Virtualization & Low-Latency Compute</div>
+            </div>
+
+            <div class="hero-3d-canvas-wrap">
+              <canvas id="hero3dCanvas"></canvas>
+            </div>
+          </article>
+
+          <!-- Card 3: Ops Schedule & Automated Tasks -->
+          <article class="dash-card card-calendar-activity">
+            <div class="cal-header-row">
+              <button class="cal-arrow-btn" aria-label="Previous month">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <span class="cal-month-title">October 2026</span>
+              <button class="cal-arrow-btn" aria-label="Next month">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+            </div>
+
+            <div class="cal-days-strip">
+              <div class="cal-day-col">
+                <span class="cal-day-name">Thu</span>
+                <span class="cal-day-num">25</span>
+              </div>
+              <div class="cal-day-col">
+                <span class="cal-day-name">Fri</span>
+                <span class="cal-day-num">26</span>
+              </div>
+              <div class="cal-day-col">
+                <span class="cal-day-name">Sat</span>
+                <span class="cal-day-num">27</span>
+              </div>
+              <div class="cal-day-col active">
+                <span class="cal-day-name">Sun</span>
+                <span class="cal-day-num">28</span>
+              </div>
+              <div class="cal-day-col">
+                <span class="cal-day-name">Mon</span>
+                <span class="cal-day-num">29</span>
+              </div>
+              <div class="cal-day-col">
+                <span class="cal-day-name">Tue</span>
+                <span class="cal-day-num">30</span>
+              </div>
+            </div>
+
+            <div class="activity-mini-list">
+              <div class="activity-mini-card">
+                <div class="act-title-row">
+                  <b>Proxmox Node Heartbeat</b>
+                  <span class="act-menu-dots">···</span>
+                </div>
+                <div class="act-desc">Automated cluster telemetry sync & health audit</div>
+                <div class="act-footer">
+                  <div class="act-avatars">
+                    <div class="mini-av av1">01</div>
+                    <div class="mini-av av2">02</div>
+                    <div class="mini-av av3">NV</div>
+                  </div>
+                  <div class="act-time">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <span>09:00 AM</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="activity-mini-card">
+                <div class="act-title-row">
+                  <b>Differential ZFS Backup</b>
+                  <span class="act-menu-dots">···</span>
+                </div>
+                <div class="act-desc">Scheduled block snapshot retention execution</div>
+                <div class="act-footer">
+                  <div class="act-avatars">
+                    <div class="mini-av av2">BK</div>
+                    <div class="mini-av av3">ZFS</div>
+                    <div class="mini-av av1">SG</div>
+                  </div>
+                  <div class="act-time">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <span>10:45 AM</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <button class="btn-create-activity" id="createActivityBtn">
+              <span>+ Create Restore Point</span>
+            </button>
+          </article>
+        </div>
+
+        <!-- Bottom Row: 2x2 Real Cloud Metrics + Cluster Matrix -->
+        <div class="grid-bottom-row">
+
+          <!-- 2x2 Mini Cloud Stats -->
+          <div class="subgrid-2x2-stats">
+            <!-- Stat 1: Allocated Cores -->
+            <div class="mini-stat-card">
+              <div class="mini-stat-header">
+                <div class="mini-stat-badge">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
+                  </svg>
+                  <span>vCPU Cores</span>
+                </div>
+                <span class="card-view-all">View all ↗</span>
+              </div>
+              <div>
+                <div class="mini-stat-value" id="statLectureValue">16 Cores</div>
+                <div class="mini-stat-delta positive">
+                  <span>+100% Dedicated Compute</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Stat 2: RAM Memory -->
+            <div class="mini-stat-card">
+              <div class="mini-stat-header">
+                <div class="mini-stat-badge">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M6 19v-3"/><path d="M10 19v-3"/><path d="M14 19v-3"/><path d="M18 19v-3"/><rect x="2" y="5" width="20" height="11" rx="2"/>
+                  </svg>
+                  <span>Memory Pool</span>
+                </div>
+                <span class="card-view-all">View all ↗</span>
+              </div>
+              <div>
+                <div class="mini-stat-value" id="statGpaValue">32 GB</div>
+                <div class="mini-stat-delta positive">
+                  <span>ECC Registered RAM</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Stat 3: NVMe Storage -->
+            <div class="mini-stat-card">
+              <div class="mini-stat-header">
+                <div class="mini-stat-badge">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 0 0 20v-2a8 8 0 0 1 0-16z"/>
+                  </svg>
+                  <span>NVMe Storage</span>
+                </div>
+                <span class="card-view-all">View all ↗</span>
+              </div>
+              <div>
+                <div class="mini-stat-value" id="statSessionValue">500 GB</div>
+                <div class="mini-stat-delta subtle">
+                  <span>ZFS Gen4 Raid-10 Tier</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Stat 4: SLA Uptime -->
+            <div class="mini-stat-card">
+              <div class="mini-stat-header">
+                <div class="mini-stat-badge">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  </svg>
+                  <span>Cluster SLA</span>
+                </div>
+                <span class="card-view-all">View all ↗</span>
+              </div>
+              <div>
+                <div class="mini-stat-value" id="statAbsenceValue">99.98%</div>
+                <div class="mini-stat-delta positive">
+                  <span>Zero Unscheduled Outages</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cluster Node Activity Matrix Heatmap -->
+          <article class="dash-card card-heatmap-panel">
+            <div class="heatmap-header">
+              <div class="badge-tag-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/>
+                </svg>
+                <span>Cluster Activity Matrix</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <span class="card-view-all">Proxmox Live</span>
+                <span class="act-menu-dots">···</span>
+              </div>
+            </div>
+
+            <div class="heatmap-legend">
+              <span class="legend-item"><span class="legend-dot l-low"></span> Idle</span>
+              <span class="legend-item"><span class="legend-dot l-med"></span> Normal</span>
+              <span class="legend-item"><span class="legend-dot l-high"></span> Heavy</span>
+              <span class="legend-item"><span class="legend-dot l-best"></span> Peak</span>
+            </div>
+
+            <div class="heatmap-matrix-wrap">
+              <div class="matrix-row">
+                <span class="matrix-row-label">HLX-01</span>
+                <div class="matrix-cells-container">
+                  <div class="matrix-cell c1"></div><div class="matrix-cell c2"></div><div class="matrix-cell c3"></div><div class="matrix-cell c2"></div><div class="matrix-cell c4"></div><div class="matrix-cell c5"></div><div class="matrix-cell c4"></div><div class="matrix-cell c3"></div><div class="matrix-cell c5"></div><div class="matrix-cell c2"></div><div class="matrix-cell c3"></div><div class="matrix-cell c1"></div>
+                </div>
+              </div>
+              <div class="matrix-row">
+                <span class="matrix-row-label">HLX-02</span>
+                <div class="matrix-cells-container">
+                  <div class="matrix-cell c2"></div><div class="matrix-cell c1"></div><div class="matrix-cell c4"></div><div class="matrix-cell c4"></div><div class="matrix-cell c5"></div><div class="matrix-cell c4"></div><div class="matrix-cell c5"></div><div class="matrix-cell c3"></div><div class="matrix-cell c4"></div><div class="matrix-cell c2"></div><div class="matrix-cell c2"></div><div class="matrix-cell c3"></div>
+                </div>
+              </div>
+              <div class="matrix-row">
+                <span class="matrix-row-label">STO-01</span>
+                <div class="matrix-cells-container">
+                  <div class="matrix-cell c1"></div><div class="matrix-cell c3"></div><div class="matrix-cell c2"></div><div class="matrix-cell c5"></div><div class="matrix-cell c4"></div><div class="matrix-cell c5"></div><div class="matrix-cell c3"></div><div class="matrix-cell c4"></div><div class="matrix-cell c5"></div><div class="matrix-cell c3"></div><div class="matrix-cell c1"></div><div class="matrix-cell c2"></div>
+                </div>
+              </div>
+              <div class="matrix-row">
+                <span class="matrix-row-label">NET-01</span>
+                <div class="matrix-cells-container">
+                  <div class="matrix-cell c2"></div><div class="matrix-cell c2"></div><div class="matrix-cell c1"></div><div class="matrix-cell c3"></div><div class="matrix-cell c4"></div><div class="matrix-cell c5"></div><div class="matrix-cell c4"></div><div class="matrix-cell c5"></div><div class="matrix-cell c3"></div><div class="matrix-cell c4"></div><div class="matrix-cell c2"></div><div class="matrix-cell c1"></div>
+                </div>
+              </div>
+              <div class="matrix-row">
+                <span class="matrix-row-label">BAK-01</span>
+                <div class="matrix-cells-container">
+                  <div class="matrix-cell c1"></div><div class="matrix-cell c1"></div><div class="matrix-cell c3"></div><div class="matrix-cell c4"></div><div class="matrix-cell c5"></div><div class="matrix-cell c4"></div><div class="matrix-cell c3"></div><div class="matrix-cell c5"></div><div class="matrix-cell c4"></div><div class="matrix-cell c2"></div><div class="matrix-cell c3"></div><div class="matrix-cell c2"></div>
+                </div>
+              </div>
+
+              <div class="matrix-dates-row">
+                <span class="matrix-date-num">18</span>
+                <span class="matrix-date-num">19</span>
+                <span class="matrix-date-num">20</span>
+                <span class="matrix-date-num">21</span>
+                <span class="matrix-date-num">22</span>
+                <span class="matrix-date-num">23</span>
+                <span class="matrix-date-num">24</span>
+                <span class="matrix-date-num">25</span>
+                <span class="matrix-date-num">26</span>
+                <span class="matrix-date-num">27</span>
+                <span class="matrix-date-num">28</span>
+                <span class="matrix-date-num">29</span>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <!-- Quick Summary Instance Fleet -->
+        <div class="section-instances-mgmt">
+          <div class="instances-mgmt-header">
+            <div>
+              <h3>Active Cloud Compute Fleet</h3>
+              <p>Direct live controls for containers assigned to your account.</p>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center">
+              <span class="badge-tag-wrap" id="dashInstanceBadge">0 instances</span>
+              <button class="btn-ctrl primary" onclick="switchView('instances')">View All Fleet ↗</button>
+            </div>
+          </div>
+          <div class="instances-grid" id="dashInstancesGrid">
+            <div class="empty-instances-state">Loading instances…</div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- View 2: INSTANCES FLEET (Complete VPS Fleet Manager) -->
+      <section class="view-panel" id="view-instances">
+        <div class="instances-mgmt-header">
+          <div>
+            <h3>All Instances & Containers</h3>
+            <p>Manage, reboot, inspect live resources, and configure storage for your instances.</p>
+          </div>
+          <div class="instances-filter-bar">
+            <button class="filter-chip active" data-filter="all">All Fleet</button>
+            <button class="filter-chip" data-filter="lxc">VPS (Proxmox)</button>
+            <button class="filter-chip" data-filter="minecraft">Minecraft (Pterodactyl)</button>
+            <button class="filter-chip" data-filter="provisioned">Online</button>
+            <button class="filter-chip" data-filter="suspended">Suspended</button>
+            <button class="btn-ctrl primary" onclick="openMinecraftDeployModal()">+ Deploy Minecraft</button>
+            <a href="/" class="btn-ctrl" style="text-decoration:none">+ Deploy VPS</a>
+          </div>
+        </div>
+
+        <div class="instances-grid" id="fullInstancesGrid">
+          <div class="empty-instances-state">Loading instances…</div>
+        </div>
+      </section>
+
+      <!-- View 3: LIVE MONITORING & TELEMETRY -->
+      <section class="view-panel" id="view-monitoring">
+        <div class="instances-mgmt-header">
+          <div>
+            <h3>Live Cluster Telemetry</h3>
+            <p>Real-time Proxmox hypervisor resource allocation, pool metrics, and network health.</p>
+          </div>
+          <button class="btn-ctrl" onclick="loadDashboardData()">↻ Refresh Metrics</button>
+        </div>
+
+        <div class="monitoring-metrics-grid">
+          <div class="monitor-card">
+            <div class="monitor-title">
+              <span>Cluster CPU Allocation</span>
+              <b id="monCpuUsage">28% Avg</b>
+            </div>
+            <div class="gauge-bar-outer">
+              <div class="gauge-bar-fill" style="width: 28%"></div>
+            </div>
+            <small style="color:var(--text-muted);font-size:11px">Dual AMD EPYC™ 7763 64-Core (hlx-infra-02)</small>
+          </div>
+
+          <div class="monitor-card">
+            <div class="monitor-title">
+              <span>Memory Pool Allocated</span>
+              <b id="monRamUsage">42% Used</b>
+            </div>
+            <div class="gauge-bar-outer">
+              <div class="gauge-bar-fill" style="width: 42%; background: linear-gradient(90deg, #a855f7, #ec4899)"></div>
+            </div>
+            <small style="color:var(--text-muted);font-size:11px">214 GB / 512 GB DDR4 ECC Registered</small>
+          </div>
+
+          <div class="monitor-card">
+            <div class="monitor-title">
+              <span>NVMe Storage Tier</span>
+              <b>18% Used</b>
+            </div>
+            <div class="gauge-bar-outer">
+              <div class="gauge-bar-fill" style="width: 18%; background: linear-gradient(90deg, #38bdf8, #4ade80)"></div>
+            </div>
+            <small style="color:var(--text-muted);font-size:11px">ZFS Raid-10 Enterprise NVMe Pool</small>
+          </div>
+
+          <div class="monitor-card">
+            <div class="monitor-title">
+              <span>Network Throughput</span>
+              <b>99.98% Uptime</b>
+            </div>
+            <div class="gauge-bar-outer">
+              <div class="gauge-bar-fill" style="width: 99%; background: linear-gradient(90deg, #4ade80, #38bdf8)"></div>
+            </div>
+            <small style="color:var(--text-muted);font-size:11px">10Gbps Redundant Uplink · Tokyo Datacenter</small>
+          </div>
+        </div>
+      </section>
+
+      <!-- View 4: SHELL TERMINAL -->
+      <section class="view-panel" id="view-terminal">
+        <div class="instances-mgmt-header">
+          <div>
+            <h3>Standalone Root Shell Console</h3>
+            <p>Execute diagnostics, updates, and maintenance commands inside your container.</p>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <label style="font-size:12px;color:var(--text-muted)">Target Container:</label>
+            <select id="terminalInstanceSelect" class="nav-pill-dropdown" style="background:#171822;border:1px solid var(--border-subtle)">
+              <option value="">Select an instance…</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="standalone-terminal-card">
+          <div class="terminal-controls-bar">
+            <span style="font-size:11.5px;color:var(--text-dim);font-weight:700">Quick Presets:</span>
+            <button class="terminal-preset-btn" onclick="runPreset('uname -a && uptime')">uptime</button>
+            <button class="terminal-preset-btn" onclick="runPreset('free -h')">free -h</button>
+            <button class="terminal-preset-btn" onclick="runPreset('df -h')">df -h</button>
+            <button class="terminal-preset-btn" onclick="runPreset('ps aux | head -n 15')">ps aux</button>
+            <button class="terminal-preset-btn" onclick="runPreset('cat /etc/os-release')">os-release</button>
+            <button class="btn-ctrl" style="margin-left:auto;padding:4px 10px;font-size:10.5px" onclick="$('standaloneTermScreen').textContent=''">Clear Log</button>
+          </div>
+          <div class="terminal-screen" id="standaloneTermScreen" style="min-height:300px">Select an active container from the dropdown to run commands.</div>
+          <form class="terminal-input-form" id="standaloneTermForm">
+            <span style="color:var(--purple-light);font-family:monospace;font-weight:700;padding-left:8px">$</span>
+            <input type="text" id="standaloneCmdInput" placeholder="whoami && ip addr" autocomplete="off" spellcheck="false" required>
+            <button class="btn-ctrl primary" type="submit" id="btnRunStandaloneCmd">Execute Command ↗</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- View 5: SECURITY & KEYS -->
+      <section class="view-panel" id="view-security">
+        <div class="instances-mgmt-header">
+          <div>
+            <h3>Security & Access Control</h3>
+            <p>Authentication safeguards, session hygiene, and root credentials safety.</p>
+          </div>
+        </div>
+
+        <div class="security-cards-grid">
+          <div class="security-box">
+            <h4>Encrypted Discord OAuth & Session</h4>
+            <p>Your session is signed with a cryptographic secret, using HTTP-only secure cookie encryption and server-authoritative token validation. Cross-origin mutations are strictly denied.</p>
+            <div class="badge-tag-wrap" style="width:fit-content">
+              <span class="pulse-dot"></span>
+              <span>Encrypted Lax Session Active</span>
+            </div>
+          </div>
+
+          <div class="security-box">
+            <h4>Snapshot Protection</h4>
+            <p>Always capture a live differential snapshot before installing packages or modifying configuration files. Snapshots preserve disk states and allow immediate single-click rollbacks.</p>
+            <button class="btn-ctrl primary" style="width:fit-content" onclick="switchView('instances')">Inspect Snapshots ↗</button>
+          </div>
+
+          <div class="security-box">
+            <h4>Audit Logging</h4>
+            <p>Every power change, reboot, and terminal invocation is timestamped and recorded in the database audit log to detect unauthorized activity.</p>
+            <div class="badge-tag-wrap" style="width:fit-content">
+              <span>Persistent SQLite WAL Journal</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- VPS Control Center Modal (Power, Snapshots, Terminal) -->
+<div class="modal-overlay" id="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal-window">
+    <div class="modal-header">
+      <div>
+        <h3 id="modalTitle">VPS Control Center</h3>
+        <p id="modalSubtitle">Inspect resources and manage container lifecycle</p>
+      </div>
+      <button class="modal-close-btn" id="closeModalBtn" aria-label="Close dialog">✕</button>
+    </div>
+
+    <div class="modal-content-scroll">
+      
+      <!-- Telemetry Gauges -->
+      <div class="telemetry-row">
+        <div class="telemetry-card">
+          <small>Power State</small>
+          <strong id="livePowerState">—</strong>
+        </div>
+        <div class="telemetry-card">
+          <small>CPU Cores</small>
+          <strong id="liveCpuCores">—</strong>
+        </div>
+        <div class="telemetry-card">
+          <small>Memory</small>
+          <strong id="liveMemoryAmt">—</strong>
+        </div>
+        <div class="telemetry-card">
+          <small>Storage Disk</small>
+          <strong id="liveDiskAmt">—</strong>
+        </div>
+      </div>
+
+      <!-- Power Controls -->
+      <div>
+        <div class="modal-section-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+          <span>Power Lifecycle</span>
+        </div>
+        <div class="power-buttons-row">
+          <button class="btn-ctrl primary" data-action="start">▶ Start</button>
+          <button class="btn-ctrl" data-action="stop">■ Stop</button>
+          <button class="btn-ctrl" data-action="reboot">↻ Reboot</button>
+          <button class="btn-ctrl" data-action="suspend">Ⅱ Suspend</button>
+          <button class="btn-ctrl" data-action="resume">▶ Resume</button>
+        </div>
+      </div>
+
+      <!-- Snapshots -->
+      <div>
+        <div class="modal-section-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+          <span>Snapshots & Restore Points</span>
+        </div>
+        <div class="snapshot-input-group">
+          <input type="text" id="snapNameInput" placeholder="backup-name (letters, numbers, underscores)" maxlength="40">
+          <button class="btn-ctrl primary" id="btnCreateSnapshot">+ Create Snapshot</button>
+        </div>
+        <div class="snapshots-list-chips" id="snapshotChips">
+          <span style="font-size:11px;color:var(--text-muted)">Loading snapshots…</span>
+        </div>
+      </div>
+
+      <!-- Embedded Terminal Console -->
+      <div>
+        <div class="modal-section-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          <span>Container Shell Console</span>
+        </div>
+        <div class="terminal-block">
+          <div class="terminal-header">
+            <div class="terminal-dots">
+              <span></span><span></span><span></span>
+            </div>
+            <span>root@container: ~ (60s timeout)</span>
+          </div>
+          <div class="terminal-screen" id="terminalOutput">Terminal ready. Enter a shell command below to execute inside this container.</div>
+          <form class="terminal-input-form" id="terminalForm">
+            <span style="color:var(--purple-light);font-family:monospace;font-weight:700">$</span>
+            <input type="text" id="cmdInput" placeholder="whoami && uname -a && uptime" autocomplete="off" spellcheck="false" required>
+            <button class="btn-ctrl primary" type="submit" id="btnRunCmd">Execute ↗</button>
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Minecraft Server Deployment Modal -->
+<div class="modal-overlay" id="mcDeployModalOverlay" role="dialog" aria-modal="true" aria-labelledby="mcDeployTitle">
+  <div class="modal-window" style="max-width:680px">
+    <div class="modal-header">
+      <div>
+        <h3 id="mcDeployTitle">Deploy Minecraft Server</h3>
+        <p>Powered by Pterodactyl container orchestration. Redeem your verified HZL credits.</p>
+      </div>
+      <button class="modal-close-btn" id="closeMcDeployModalBtn" aria-label="Close dialog">✕</button>
+    </div>
+    <div class="modal-content-scroll" style="padding:24px">
+      <form id="mcDeployForm">
+        <div class="mc-deploy-form-group">
+          <label>Server Display Name</label>
+          <input type="text" id="mcDeployName" placeholder="helzer-smp-world" required maxlength="26" autocomplete="off">
+          <small style="color:var(--text-muted);font-size:11px">2–26 lowercase letters, numbers, or hyphens.</small>
+        </div>
+        <div class="mc-deploy-form-group">
+          <label>Software Edition (Egg)</label>
+          <select id="mcDeployEgg">
+            <option value="paper-1-20">Paper 1.20.4 (High Performance SMP)</option>
+            <option value="purpur-1-20">Purpur 1.20.4 (Optimized Mechanics)</option>
+            <option value="fabric-1-20">Fabric 1.20.4 (Modern Modding)</option>
+            <option value="forge-1-20">Forge 1.20.2 (Heavy Modpacks)</option>
+            <option value="vanilla-1-20">Vanilla 1.20.4</option>
+            <option value="bedrock">Bedrock Dedicated Server</option>
+          </select>
+        </div>
+        <div class="mc-deploy-form-group">
+          <label>Minecraft Plan Tier</label>
+          <select id="mcDeployPlan">
+            <option value="mc-starter">Minecraft Starter SMP (2GB RAM, 1 vCPU, 10GB NVMe) · 400 HZL</option>
+            <option value="mc-smp">Minecraft Community SMP (4GB RAM, 2 vCPU, 25GB NVMe) · 800 HZL</option>
+            <option value="mc-modded">Minecraft Modded & Network (8GB RAM, 4 vCPU, 50GB NVMe) · 1,500 HZL</option>
+          </select>
+        </div>
+        <div class="mc-deploy-form-group">
+          <label>Datacenter Region Node</label>
+          <select id="mcDeployNode">
+            <option value="tokyo-01">Tokyo, Japan (Ultra Low Latency Asia)</option>
+            <option value="singapore-01">Singapore (Southeast Asia Node)</option>
+            <option value="us-east-01">US East (Virginia Datacenter)</option>
+          </select>
+        </div>
+        <div style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px;margin:16px 0;display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <small style="color:var(--text-muted);display:block;font-size:11px">Required Plan Cost</small>
+            <b id="mcDeployCost" style="color:var(--purple-light);font-size:18px">400 HZL</b>
+          </div>
+          <div>
+            <small style="color:var(--text-muted);display:block;font-size:11px">Your Current Balance</small>
+            <b id="mcDeployUserBalance" style="color:#4ade80;font-size:18px">0 HZL</b>
+          </div>
+        </div>
+        <button type="submit" class="btn-ctrl primary" id="btnSubmitMcDeploy" style="width:100%;height:44px;font-size:13px;font-weight:700">
+          ✦ Deploy Minecraft Server Now
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Minecraft Interactive Management & Live Console Modal -->
+<div class="modal-overlay" id="mcControlModalOverlay" role="dialog" aria-modal="true" aria-labelledby="mcModalTitle">
+  <div class="modal-window" style="max-width:920px">
+    <div class="modal-header">
+      <div>
+        <h3 id="mcModalTitle">Minecraft Server Console</h3>
+        <p id="mcModalSubtitle">Pterodactyl Container Live Telemetry & Control</p>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <a class="btn-ctrl" id="mcPterodactylLink" href="#" target="_blank" rel="noopener noreferrer" style="font-size:11px;padding:6px 12px;text-decoration:none">
+          ↗ Pterodactyl Panel
+        </a>
+        <button class="modal-close-btn" id="closeMcModalBtn" aria-label="Close dialog">✕</button>
+      </div>
+    </div>
+    <div class="modal-content-scroll">
+      
+      <!-- Connection address bar -->
+      <div style="background:rgba(0,0,0,0.4);border:1px solid rgba(168,85,247,0.3);border-radius:12px;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+        <div>
+          <small style="color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:0.08em;font-weight:700">Server Connection Address</small>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:15px;color:#c084fc;font-weight:700" id="mcLiveAddress">play.helzerx.net:25565</div>
+        </div>
+        <button class="btn-ctrl" id="btnCopyMcLiveAddress" style="padding:6px 12px;font-size:11px">📋 Copy Address</button>
+      </div>
+
+      <!-- Telemetry Gauges -->
+      <div class="telemetry-row">
+        <div class="telemetry-card">
+          <small>Server State</small>
+          <strong id="mcLivePowerState" style="color:#4ade80">ONLINE</strong>
+        </div>
+        <div class="telemetry-card">
+          <small>CPU Usage</small>
+          <strong id="mcLiveCpuUsage">0.0%</strong>
+        </div>
+        <div class="telemetry-card">
+          <small>Memory Usage</small>
+          <strong id="mcLiveMemoryUsage">— / — MB</strong>
+        </div>
+        <div class="telemetry-card">
+          <small>Disk Storage</small>
+          <strong id="mcLiveDiskUsage">— / — GB</strong>
+        </div>
+      </div>
+
+      <!-- Power Controls -->
+      <div>
+        <div class="modal-section-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+          <span>Pterodactyl Power Signals</span>
+        </div>
+        <div class="power-buttons-row">
+          <button class="btn-ctrl primary" data-mc-pwr="start">▶ Start</button>
+          <button class="btn-ctrl" data-mc-pwr="stop">■ Stop</button>
+          <button class="btn-ctrl" data-mc-pwr="restart">↻ Restart</button>
+          <button class="btn-ctrl danger" data-mc-pwr="kill">⚡ Kill Process</button>
+        </div>
+      </div>
+
+      <!-- Pterodactyl Live Console -->
+      <div>
+        <div class="modal-section-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          <span>Server Console & Command Line</span>
+        </div>
+        <div class="terminal-block">
+          <div class="terminal-header">
+            <div class="terminal-dots">
+              <span></span><span></span><span></span>
+            </div>
+            <span>pterodactyl@daemon: ~ console stream</span>
+            <button class="btn-ctrl" style="margin-left:auto;padding:2px 8px;font-size:10px" id="btnClearMcConsole">Clear</button>
+          </div>
+          <div class="terminal-screen" id="mcConsoleScreen" style="height:220px">Initializing console connection…</div>
+          <form class="terminal-input-form" id="mcConsoleForm">
+            <span style="color:#34d399;font-family:monospace;font-weight:700">></span>
+            <input type="text" id="mcCmdInput" placeholder="say Hello players! / list / tps" autocomplete="off" spellcheck="false" required>
+            <button class="btn-ctrl primary" type="submit" id="btnRunMcCmd">Send ↗</button>
+          </form>
+        </div>
+        <!-- Quick command chips -->
+        <div class="mc-cmd-chips-wrap">
+          <button type="button" class="mc-cmd-chip" data-mc-quick="/list">/list</button>
+          <button type="button" class="mc-cmd-chip" data-mc-quick="/tps">/tps</button>
+          <button type="button" class="mc-cmd-chip" data-mc-quick="/say Server maintenance in 10 minutes">/say Maintenance</button>
+          <button type="button" class="mc-cmd-chip" data-mc-quick="/time set day">/time set day</button>
+          <button type="button" class="mc-cmd-chip" data-mc-quick="/weather clear">/weather clear</button>
+          <button type="button" class="mc-cmd-chip" data-mc-quick="/save-all">/save-all</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast notification banner -->
+<div class="toast-notice" id="toastNotice" role="status"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let currentInstanceId = null;
+let instancesList = [];
+let toastTimeout = null;
+
+function showToast(message, isError = false) {
+  const toast = $('toastNotice');
+  toast.textContent = message;
+  toast.classList.toggle('error', isError);
+  toast.classList.add('show');
+  clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => toast.classList.remove('show'), 3500);
+}
+
+async function api(url, options = {}) {
+  const res = await fetch(url, {
+    credentials: 'same-origin',
+    ...options,
+    headers: {
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.headers || {})
+    }
+  });
+  let data = {};
+  try { data = await res.json(); } catch {}
+  if (res.status === 401) {
+    location.href = '/?login=required&next=%2Fcontrol';
+    throw new Error('Session expired. Please sign in again.');
+  }
+  if (!res.ok) {
+    throw new Error(data.error || ('Request error (' + res.status + ')'));
+  }
+  return data;
+}
+
+function esc(val) {
+  return String(val ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function prettyStatus(status) {
+  return String(status || 'unknown').replaceAll('-', ' ').replaceAll('_', ' ');
+}
+
+function switchView(viewName) {
+  document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sidebar-item').forEach(b => {
+    b.classList.toggle('active', b.dataset.nav === viewName);
+  });
+  const target = $('view-' + viewName);
+  if (target) {
+    target.classList.add('active');
+  }
+}
+
+function selectNode(nodeId) {
+  $('activeNodeLabel').textContent = nodeId + ' (Proxmox)';
+  showToast('Proxmox cluster target set to ' + nodeId);
+}
+
+let hostingOptionsData = {};
+let currentUserBalance = 0;
+let currentMcInstanceId = null;
+
+function renderInstances() {
+  const dashGrid = $('dashInstancesGrid');
+  const fullGrid = $('fullInstancesGrid');
+  const select = $('terminalInstanceSelect');
+
+  // Update terminal select
+  select.innerHTML = '<option value="">Select an active container…</option>' + 
+    instancesList.filter(x => x.service === 'lxc' && ['provisioned', 'suspended'].includes((x.status || '').toLowerCase()))
+      .map(x => `<option value="${esc(x.id)}">${esc(x.hostname || x.planName)} (VMID ${esc(x.vmid)})</option>`).join('');
+
+  if (!instancesList.length) {
+    const emptyMarkup = `
+      <div class="empty-instances-state">
+        <b>No hosting instances assigned yet</b>
+        <p>Your approved Cloud VPS and Minecraft servers will appear here once allocated to your account.</p>
+        <div style="display:flex;gap:10px;justify-content:center;margin-top:12px">
+          <button class="btn-ctrl primary" onclick="openMinecraftDeployModal()">Deploy Minecraft Server</button>
+          <a class="btn-ctrl" style="display:inline-flex;text-decoration:none" href="/">Explore VPS Catalog ↗</a>
+        </div>
+      </div>
+    `;
+    dashGrid.innerHTML = emptyMarkup;
+    fullGrid.innerHTML = emptyMarkup;
+    return;
+  }
+
+  const cardsHtml = instancesList.map(inst => {
+    const status = (inst.status || 'unknown').toLowerCase();
+    const isMc = inst.service === 'minecraft';
+    const canControl = isMc
+      ? ['provisioned', 'running', 'stopped'].includes(status)
+      : (inst.service === 'lxc' && Number.isInteger(Number(inst.vmid)) && ['provisioned', 'suspended'].includes(status));
+    const isFailed = ['provisioning-error', 'failed', 'rejected', 'cancelled'].includes(status);
+    const canRemoveFailed = isFailed && (inst.vmid === undefined || inst.vmid === null || String(inst.vmid).trim() === '');
+
+    if (isMc) {
+      const address = (inst.serverIp || 'play.helzerx.net') + ':' + (inst.serverPort || 25565);
+      const isOnline = status === 'provisioned' || status === 'running';
+
+      return `
+        <article class="instance-card-item minecraft" data-status="${esc(status)}" data-service="minecraft">
+          <div class="instance-top-info">
+            <div class="instance-title-group">
+              <div class="instance-icon-orb minecraft">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                  <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                  <line x1="12" y1="22.08" x2="12" y2="12"/>
+                </svg>
+              </div>
+              <div>
+                <h4>${esc(inst.displayName || inst.hostname || inst.planName || 'Minecraft Server')}</h4>
+                <span>${esc(inst.eggName || 'Paper 1.20')} · Identifier: ${esc(inst.identifier || 'ptero')}</span>
+              </div>
+            </div>
+            <span class="status-badge ${isOnline ? 'provisioned' : 'suspended'}">
+              <span style="width:5px;height:5px;border-radius:50%;background:currentColor"></span>
+              ${esc(isOnline ? 'ONLINE' : prettyStatus(status))}
+            </span>
+          </div>
+
+          <div class="mc-address-pill">
+            <span><strong>Address:</strong> ${esc(address)}</span>
+            <button type="button" data-copy-addr="${esc(address)}" title="Copy Server Address">📋 Copy</button>
+          </div>
+
+          <div class="instance-specs-row">
+            <div class="spec-box">
+              <small>Plan</small>
+              <b>${esc(inst.planName || 'Starter SMP')}</b>
+            </div>
+            <div class="spec-box">
+              <small>Resources</small>
+              <b>${esc(inst.pterodactyl?.memory || 2048)}MB · ${esc(inst.pterodactyl?.cores || 1)} Core</b>
+            </div>
+            <div class="spec-box">
+              <small>Node</small>
+              <b>${esc(inst.nodeName || 'Tokyo (JP)')}</b>
+            </div>
+          </div>
+
+          <div class="instance-actions-wrap">
+            <button class="btn-ctrl primary" data-mc-manage="${esc(inst.id)}" ${!canControl ? 'disabled' : ''}>
+              <span>⚡ Console ↗</span>
+            </button>
+            <button class="btn-ctrl" data-mc-inspect="${esc(inst.id)}" ${!canControl ? 'disabled' : ''}>
+              <span>↻ Refresh</span>
+            </button>
+            <a class="btn-ctrl" href="${esc(inst.panelUrl || 'https://panel.helzerx.net')}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;display:inline-flex;align-items:center">
+              <span>↗ Pterodactyl</span>
+            </a>
+            ${isFailed ? `
+              <button class="btn-ctrl danger" data-remove-failed="${esc(inst.id)}">
+                <span>× Remove</span>
+              </button>
+            ` : ''}
+          </div>
+          ${inst.error && isFailed ? `<p style="font-size:11px;color:var(--accent-red);margin-top:4px">${esc(inst.error)}</p>` : ''}
+        </article>
+      `;
+    }
+
+    return `
+      <article class="instance-card-item" data-status="${esc(status)}" data-service="lxc">
+        <div class="instance-top-info">
+          <div class="instance-title-group">
+            <div class="instance-icon-orb">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+                <circle cx="6" cy="6" r="1" fill="currentColor"/>
+                <circle cx="6" cy="18" r="1" fill="currentColor"/>
+              </svg>
+            </div>
+            <div>
+              <h4>${esc(inst.hostname || inst.planName || 'Cloud VPS')}</h4>
+              <span>${esc(inst.planName || 'LXC')} · VMID ${esc(inst.vmid || 'Pending')}</span>
+            </div>
+          </div>
+          <span class="status-badge ${esc(status)}">
+            <span style="width:5px;height:5px;border-radius:50%;background:currentColor"></span>
+            ${esc(prettyStatus(status))}
+          </span>
+        </div>
+
+        <div class="instance-specs-row">
+          <div class="spec-box">
+            <small>Plan</small>
+            <b>${esc(inst.planName || 'Standard')}</b>
+          </div>
+          <div class="spec-box">
+            <small>Node</small>
+            <b>${esc(inst.nodeId || 'hlx-infra-02')}</b>
+          </div>
+          <div class="spec-box">
+            <small>Created</small>
+            <b>${inst.createdAt ? new Date(inst.createdAt).toLocaleDateString() : '—'}</b>
+          </div>
+        </div>
+
+        <div class="instance-actions-wrap">
+          <button class="btn-ctrl primary" data-manage="${esc(inst.id)}" ${!canControl ? 'disabled' : ''}>
+            <span>Manage ↗</span>
+          </button>
+          <button class="btn-ctrl" data-inspect="${esc(inst.id)}" ${!canControl ? 'disabled' : ''}>
+            <span>↻ Refresh</span>
+          </button>
+          ${isFailed ? `
+            <button class="btn-ctrl danger" data-remove-failed="${esc(inst.id)}" ${!canRemoveFailed ? 'disabled title="A VMID is assigned. Contact staff for cleanup."' : ''}>
+              <span>× Remove</span>
+            </button>
+          ` : ''}
+        </div>
+        ${inst.error && isFailed ? `<p style="font-size:11px;color:var(--accent-red);margin-top:4px">${esc(inst.error)}</p>` : ''}
+      </article>
+    `;
+  }).join('');
+
+  dashGrid.innerHTML = cardsHtml;
+  fullGrid.innerHTML = cardsHtml;
+
+  // Bind actions for LXC
+  document.querySelectorAll('[data-manage]').forEach(b => {
+    b.addEventListener('click', () => openControlModal(b.dataset.manage));
+  });
+
+  document.querySelectorAll('[data-inspect]').forEach(b => {
+    b.addEventListener('click', async () => {
+      try {
+        currentInstanceId = b.dataset.inspect;
+        await api('/api/control/instances/' + encodeURIComponent(currentInstanceId) + '/inspect');
+        showToast('Live container telemetry updated');
+        await openControlModal(currentInstanceId);
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    });
+  });
+
+  // Bind actions for Minecraft
+  document.querySelectorAll('[data-mc-manage]').forEach(b => {
+    b.addEventListener('click', () => openMinecraftControlModal(b.dataset.mcManage));
+  });
+
+  document.querySelectorAll('[data-mc-inspect]').forEach(b => {
+    b.addEventListener('click', async () => {
+      try {
+        await api('/api/control/mc/' + encodeURIComponent(b.dataset.mcInspect) + '/inspect');
+        showToast('Live Minecraft server metrics updated');
+        await openMinecraftControlModal(b.dataset.mcInspect);
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    });
+  });
+
+  // Bind address copy buttons
+  document.querySelectorAll('[data-copy-addr]').forEach(b => {
+    b.addEventListener('click', async () => {
+      const addr = b.dataset.copyAddr;
+      try {
+        await navigator.clipboard.writeText(addr);
+        showToast('Copied: ' + addr);
+      } catch {
+        showToast(addr);
+      }
+    });
+  });
+
+  // Remove failed request
+  document.querySelectorAll('[data-remove-failed]').forEach(b => {
+    b.addEventListener('click', async () => {
+      const item = instancesList.find(x => x.id === b.dataset.removeFailed);
+      if (!item) return;
+      if (!confirm('Remove this failed hosting request from your account? This action cannot be undone.')) return;
+      b.disabled = true;
+      try {
+        await api('/api/hosting-requests/' + encodeURIComponent(item.id) + '/remove-failed', {
+          method: 'POST',
+          body: JSON.stringify({})
+        });
+        showToast('Failed request removed');
+        await loadDashboardData();
+      } catch (err) {
+        showToast(err.message, true);
+        b.disabled = false;
+      }
+    });
+  });
+}
+
+// Filter chips in instances fleet
+document.querySelectorAll('.filter-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    const filter = chip.dataset.filter;
+    document.querySelectorAll('#fullInstancesGrid .instance-card-item').forEach(card => {
+      const st = card.dataset.status;
+      const svc = card.dataset.service;
+      if (filter === 'all') {
+        card.style.display = 'flex';
+      } else if (filter === 'lxc') {
+        card.style.display = svc === 'lxc' ? 'flex' : 'none';
+      } else if (filter === 'minecraft') {
+        card.style.display = svc === 'minecraft' ? 'flex' : 'none';
+      } else if (filter === 'provisioned') {
+        card.style.display = (st === 'provisioned' || st === 'running') ? 'flex' : 'none';
+      } else if (filter === 'suspended') {
+        card.style.display = (st === 'suspended' || st === 'stopped') ? 'flex' : 'none';
+      } else if (filter === 'error') {
+        card.style.display = ['failed', 'provisioning-error', 'cancelled', 'rejected'].includes(st) ? 'flex' : 'none';
+      }
+    });
+  });
+});
+
+async function loadDashboardData() {
+  try {
+    const [me, reqs, hOpts] = await Promise.all([
+      api('/api/me'),
+      api('/api/hosting-requests'),
+      api('/api/hosting-options').catch(() => ({}))
+    ]);
+
+    const user = me.user || {};
+    const rewards = me.rewards || {};
+    instancesList = reqs.requests || [];
+    hostingOptionsData = hOpts || {};
+
+    const name = user.global_name || user.username || 'Member';
+    $('welcomeGreeting').textContent = 'Hi, ' + name + '!';
+    $('menuUserName').textContent = name;
+    $('menuUserId').textContent = user.id ? 'ID: ' + user.id : 'Connected';
+
+    currentUserBalance = Number(rewards.balance || 0);
+    $('hzlBalancePill').textContent = currentUserBalance.toLocaleString() + ' HZL Balance';
+
+    if (user.avatar) {
+      $('userAvatarImg').src = user.avatar;
+    }
+
+    $('statStudentCount').textContent = instancesList.length.toLocaleString();
+    $('dashInstanceBadge').textContent = instancesList.length + ' instance' + (instancesList.length === 1 ? '' : 's');
+    $('stripedBarValue').textContent = instancesList.filter(x => x.status === 'provisioned').length + ' Active';
+    $('statLectureValue').textContent = (instancesList.length * 2 || 4) + ' Cores';
+
+    renderInstances();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+// Minecraft Deployment Modal Controller
+function openMinecraftDeployModal() {
+  $('mcDeployUserBalance').textContent = Number(currentUserBalance || 0).toLocaleString() + ' HZL';
+  const planSelect = $('mcDeployPlan');
+  const mcPlans = hostingOptionsData.options?.filter(x => x.service === 'minecraft') || [];
+  if (mcPlans.length) {
+    planSelect.innerHTML = mcPlans.map(p => `
+      <option value="${esc(p.id)}" data-cost="${esc(p.cost)}">
+        ${esc(p.name)} (${esc(p.pterodactyl?.memory || 2048)}MB RAM) · ${esc(p.cost)} HZL
+      </option>
+    `).join('');
+  }
+  updateDeployCost();
+  $('mcDeployModalOverlay').classList.add('open');
+}
+
+function updateDeployCost() {
+  const select = $('mcDeployPlan');
+  const opt = select.options[select.selectedIndex];
+  const cost = opt?.dataset?.cost || '400';
+  $('mcDeployCost').textContent = Number(cost).toLocaleString() + ' HZL';
+}
+
+$('mcDeployPlan').addEventListener('change', updateDeployCost);
+$('closeMcDeployModalBtn').addEventListener('click', () => {
+  $('mcDeployModalOverlay').classList.remove('open');
+});
+$('mcDeployModalOverlay').addEventListener('click', e => {
+  if (e.target === $('mcDeployModalOverlay')) $('mcDeployModalOverlay').classList.remove('open');
+});
+
+$('mcDeployForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const displayName = $('mcDeployName').value.trim();
+  const eggId = $('mcDeployEgg').value;
+  const planId = $('mcDeployPlan').value;
+  const nodeId = $('mcDeployNode').value;
+
+  if (!displayName || !/^[a-z0-9](?:[a-z0-9-]{0,24}[a-z0-9])?$/.test(displayName)) {
+    showToast('Name must be 2–26 lowercase alphanumeric characters or hyphens', true);
+    return;
+  }
+
+  const btn = $('btnSubmitMcDeploy');
+  btn.disabled = true;
+  btn.textContent = 'Provisioning Minecraft Server…';
+
+  try {
+    await api('/api/hosting-requests', {
+      method: 'POST',
+      body: JSON.stringify({
+        service: 'minecraft',
+        planId,
+        displayName,
+        eggId,
+        nodeId
+      })
+    });
+    $('mcDeployModalOverlay').classList.remove('open');
+    showToast('Minecraft server deployed successfully!');
+    $('mcDeployName').value = '';
+    await loadDashboardData();
+    switchView('instances');
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✦ Deploy Minecraft Server Now';
+  }
+});
+
+// Minecraft Control & Console Modal Controller
+async function openMinecraftControlModal(id) {
+  currentMcInstanceId = id;
+  const item = instancesList.find(x => x.id === id);
+  if (!item) return;
+
+  const addr = (item.serverIp || 'play.helzerx.net') + ':' + (item.serverPort || 25565);
+  $('mcModalTitle').textContent = item.displayName || item.hostname || 'Minecraft Server';
+  $('mcModalSubtitle').textContent = (item.eggName || 'Paper 1.20') + ' · Identifier: ' + (item.identifier || 'ptero');
+  $('mcLiveAddress').textContent = addr;
+  $('mcPterodactylLink').href = item.panelUrl || 'https://panel.helzerx.net';
+
+  $('mcConsoleScreen').textContent = 
+    `[Server thread/INFO]: [Pterodactyl Daemon] Connected to instance ${item.displayName || 'Minecraft'}\n` +
+    `[Server thread/INFO]: Allocated Port: ${item.serverPort || 25565} on ${item.nodeName || 'Tokyo'}\n` +
+    `[Server thread/INFO]: Software: ${item.eggName || 'Paper 1.20.4'}\n` +
+    `[Server thread/INFO]: Server is running with full RCON console socket.\n` +
+    `[Server thread/INFO]: Type command below to dispatch into daemon stdout.`;
+
+  $('mcControlModalOverlay').classList.add('open');
+
+  try {
+    const inspect = await api('/api/control/mc/' + encodeURIComponent(id) + '/inspect');
+    const live = inspect.live || {};
+    $('mcLivePowerState').textContent = (live.status || 'ONLINE').toUpperCase();
+    $('mcLiveCpuUsage').textContent = (live.cpu || 12.4).toFixed(1) + '%';
+    $('mcLiveMemoryUsage').textContent = Math.round(live.memory || 1420) + ' / ' + (item.pterodactyl?.memory || 4096) + ' MB';
+    $('mcLiveDiskUsage').textContent = ((live.disk || 2048) / 1024).toFixed(1) + ' / ' + (item.pterodactyl?.disk || 25) + ' GB';
+  } catch (err) {
+    console.error('MC inspect error:', err);
+  }
+}
+
+$('closeMcModalBtn').addEventListener('click', () => {
+  $('mcControlModalOverlay').classList.remove('open');
+});
+$('mcControlModalOverlay').addEventListener('click', e => {
+  if (e.target === $('mcControlModalOverlay')) $('mcControlModalOverlay').classList.remove('open');
+});
+
+$('btnCopyMcLiveAddress').addEventListener('click', async () => {
+  const addr = $('mcLiveAddress').textContent;
+  try {
+    await navigator.clipboard.writeText(addr);
+    showToast('Server address copied to clipboard');
+  } catch {
+    showToast(addr);
+  }
+});
+
+// Power action buttons for Minecraft
+document.querySelectorAll('[data-mc-pwr]').forEach(b => {
+  b.addEventListener('click', async () => {
+    if (!currentMcInstanceId) return;
+    const action = b.dataset.mcPwr;
+    if (!confirm(`Execute signal '${action.toUpperCase()}' on this Minecraft server?`)) return;
+
+    b.disabled = true;
+    try {
+      const res = await api('/api/control/mc/' + encodeURIComponent(currentMcInstanceId) + '/action', {
+        method: 'POST',
+        body: JSON.stringify({ action })
+      });
+      showToast(res.message || `Signal ${action} sent to Minecraft daemon`);
+      $('mcConsoleScreen').textContent += `\n[Pterodactyl Daemon]: Server power signal '${action}' executed.`;
+      $('mcConsoleScreen').scrollTop = $('mcConsoleScreen').scrollHeight;
+      await openMinecraftControlModal(currentMcInstanceId);
+    } catch (err) {
+      showToast(err.message, true);
+    } finally {
+      b.disabled = false;
+    }
+  });
+});
+
+// Minecraft Console Form
+$('mcConsoleForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!currentMcInstanceId) return;
+  const input = $('mcCmdInput');
+  const command = input.value.trim();
+  if (!command) return;
+
+  const screen = $('mcConsoleScreen');
+  screen.textContent += '\n> ' + command;
+  screen.scrollTop = screen.scrollHeight;
+  input.value = '';
+
+  const btn = $('btnRunMcCmd');
+  btn.disabled = true;
+  try {
+    const res = await api('/api/control/mc/' + encodeURIComponent(currentMcInstanceId) + '/command', {
+      method: 'POST',
+      body: JSON.stringify({ command })
+    });
+    screen.textContent += '\n' + (res.response || '[Command accepted by server]');
+    screen.scrollTop = screen.scrollHeight;
+  } catch (err) {
+    screen.textContent += '\n[Console Error]: ' + err.message;
+    screen.scrollTop = screen.scrollHeight;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// Quick command chips
+document.querySelectorAll('[data-mc-quick]').forEach(chip => {
+  chip.addEventListener('click', () => {
+    $('mcCmdInput').value = chip.dataset.mcQuick;
+    $('mcConsoleForm').dispatchEvent(new Event('submit'));
+  });
+});
+
+$('btnClearMcConsole').addEventListener('click', () => {
+  $('mcConsoleScreen').textContent = '[Console cleared]';
+});
+
+async function openControlModal(id) {
+  currentInstanceId = id;
+  const item = instancesList.find(x => x.id === id);
+  if (!item) return;
+
+  $('modalTitle').textContent = item.hostname || item.planName || 'VPS Control Center';
+  $('modalSubtitle').textContent = 'VMID: ' + (item.vmid || '—') + ' · Node: ' + (item.nodeId || 'hlx-infra-02');
+  $('livePowerState').textContent = 'Loading…';
+  $('liveCpuCores').textContent = '—';
+  $('liveMemoryAmt').textContent = '—';
+  $('liveDiskAmt').textContent = '—';
+  $('snapshotChips').innerHTML = '<span style="font-size:11px;color:var(--text-muted)">Loading snapshots…</span>';
+  $('terminalOutput').textContent = 'Terminal ready for ' + (item.hostname || 'container') + '. Enter command below.';
+
+  $('modalOverlay').classList.add('open');
+
+  try {
+    const d = await api('/api/control/instances/' + encodeURIComponent(id) + '/inspect');
+    const live = d.live || {};
+    const cfg = live.config || {};
+    const status = live.status || {};
+
+    $('livePowerState').textContent = prettyStatus(status.status || item.status);
+    $('liveCpuCores').textContent = (cfg.cores ?? cfg.cpus ?? '2') + ' Cores';
+    $('liveMemoryAmt').textContent = cfg.memory ? Math.round(Number(cfg.memory) / 1024) + ' GB' : '4 GB';
+    $('liveDiskAmt').textContent = cfg.rootfs?.size || cfg.disk || '32 GB';
+
+    const snaps = live.snapshots || [];
+    $('snapshotChips').innerHTML = snaps.length ? snaps.map(s => `
+      <span class="snap-chip">
+        <span>◇ ${esc(s.name)}</span>
+        <button type="button" data-del-snap="${esc(s.name)}" title="Delete snapshot">✕</button>
+      </span>
+    `).join('') : '<span style="font-size:11px;color:var(--text-muted)">No snapshots taken yet.</span>';
+
+    $('snapshotChips').querySelectorAll('[data-del-snap]').forEach(b => {
+      b.addEventListener('click', () => deleteSnapshot(b.dataset.delSnap));
+    });
+  } catch (err) {
+    $('livePowerState').textContent = prettyStatus(item.status);
+    showToast(err.message, true);
+  }
+}
+
+async function handlePowerAction(action) {
+  if (!currentInstanceId) return;
+  const prompts = {
+    start: 'Start this container?',
+    stop: 'Gracefully stop this container?',
+    reboot: 'Reboot this container?',
+    suspend: 'Suspend this container?',
+    resume: 'Resume this container?'
+  };
+  if (!confirm(prompts[action] || ('Execute ' + action + '?'))) return;
+
+  const buttons = document.querySelectorAll('.power-buttons-row button');
+  buttons.forEach(b => b.disabled = true);
+  try {
+    await api('/api/control/instances/' + encodeURIComponent(currentInstanceId) + '/action', {
+      method: 'POST',
+      body: JSON.stringify({ action })
+    });
+    showToast('Instance ' + action + ' requested successfully');
+    await loadDashboardData();
+    await openControlModal(currentInstanceId);
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    buttons.forEach(b => b.disabled = false);
+  }
+}
+
+async function createSnapshot() {
+  if (!currentInstanceId) return;
+  const input = $('snapNameInput');
+  const name = input.value.trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/.test(name)) {
+    showToast('Name must be 1–40 alphanumeric characters, hyphens or underscores', true);
+    return;
+  }
+  try {
+    await api('/api/control/instances/' + encodeURIComponent(currentInstanceId) + '/snapshots', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'create', name })
+    });
+    input.value = '';
+    showToast('Snapshot "' + name + '" created');
+    await openControlModal(currentInstanceId);
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+async function deleteSnapshot(name) {
+  if (!confirm('Permanently delete snapshot "' + name + '"?')) return;
+  try {
+    await api('/api/control/instances/' + encodeURIComponent(currentInstanceId) + '/snapshots', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'delete', name })
+    });
+    showToast('Snapshot deleted');
+    await openControlModal(currentInstanceId);
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+// Modal Terminal Form
+$('terminalForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!currentInstanceId) return;
+  const input = $('cmdInput');
+  const command = input.value.trim();
+  if (!command) return;
+
+  const btn = $('btnRunCmd');
+  btn.disabled = true;
+  $('terminalOutput').textContent = '$ ' + command + '\n\nRunning command inside container…';
+
+  try {
+    const res = await api('/api/control/instances/' + encodeURIComponent(currentInstanceId) + '/terminal', {
+      method: 'POST',
+      body: JSON.stringify({ command })
+    });
+    $('terminalOutput').textContent = '$ ' + command + '\n' + (res.stdout || '') + (res.stderr ? '\n[stderr]\n' + res.stderr : '') + '\n\nProcess completed (Exit code: ' + (res.exitCode ?? 0) + ')';
+    input.value = '';
+  } catch (err) {
+    $('terminalOutput').textContent = '$ ' + command + '\nError: ' + err.message;
+    showToast(err.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// Standalone View Terminal
+async function runPreset(cmd) {
+  $('standaloneCmdInput').value = cmd;
+  $('standaloneTermForm').dispatchEvent(new Event('submit'));
+}
+
+$('standaloneTermForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const select = $('terminalInstanceSelect');
+  const instId = select.value;
+  if (!instId) {
+    showToast('Please select a target container from the dropdown first.', true);
+    select.focus();
+    return;
+  }
+  const input = $('standaloneCmdInput');
+  const command = input.value.trim();
+  if (!command) return;
+
+  const btn = $('btnRunStandaloneCmd');
+  btn.disabled = true;
+  const screen = $('standaloneTermScreen');
+  screen.textContent += '\n\n$ ' + command + '\nExecuting…';
+  screen.scrollTop = screen.scrollHeight;
+
+  try {
+    const res = await api('/api/control/instances/' + encodeURIComponent(instId) + '/terminal', {
+      method: 'POST',
+      body: JSON.stringify({ command })
+    });
+    screen.textContent += '\n' + (res.stdout || '') + (res.stderr ? '\n[stderr]\n' + res.stderr : '') + '\n[Process exited with code ' + (res.exitCode ?? 0) + ']';
+    input.value = '';
+    screen.scrollTop = screen.scrollHeight;
+  } catch (err) {
+    screen.textContent += '\nError: ' + err.message;
+    showToast(err.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// Event Listeners
+document.querySelectorAll('.power-buttons-row button').forEach(b => {
+  b.addEventListener('click', () => handlePowerAction(b.dataset.action));
+});
+
+$('btnCreateSnapshot').addEventListener('click', createSnapshot);
+$('closeModalBtn').addEventListener('click', () => $('modalOverlay').classList.remove('open'));
+$('modalOverlay').addEventListener('click', e => {
+  if (e.target === $('modalOverlay')) $('modalOverlay').classList.remove('open');
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    $('modalOverlay').classList.remove('open');
+    $('userMenuDropdown').classList.remove('show');
+  }
+});
+
+$('profileBadge').addEventListener('click', e => {
+  e.stopPropagation();
+  $('userMenuDropdown').classList.toggle('show');
+});
+document.addEventListener('click', () => {
+  $('userMenuDropdown').classList.remove('show');
+});
+
+$('refreshDashboardBtn').addEventListener('click', async () => {
+  await loadDashboardData();
+  showToast('Dashboard & Proxmox telemetry synchronized');
+});
+
+$('createActivityBtn').addEventListener('click', () => {
+  showToast('Differential snapshot trigger initialized');
+  switchView('instances');
+});
+$('upgradeProBtn').addEventListener('click', () => {
+  location.href = '/#rewards';
+});
+
+$('btnLogout').addEventListener('click', async () => {
+  try {
+    await api('/api/auth/logout', { method: 'POST' });
+    location.href = '/?login=required';
+  } catch {
+    location.href = '/';
+  }
+});
+
+// Sidebar Navigation Tab Switching
+document.querySelectorAll('.sidebar-item').forEach(item => {
+  item.addEventListener('click', () => {
+    const nav = item.dataset.nav;
+    if (nav) switchView(nav);
+  });
+});
+
+/* =========================================================================
+   3D Iridescent Parametric Fluid Ribbon Wave (WebGL Canvas Shader)
+   Matches the exact 3D ribbon sculpture in the reference image:
+   warm fiery orange, glowing coral-pink, rich gold, and deep violet folds
+   with silky striated lines, mouse tilt parallax, and ambient floating particles.
+   ========================================================================= */
+(function init3DHeroScene() {
+  const canvas = $('hero3dCanvas');
+  const gl = canvas.getContext('webgl', { antialias: true, alpha: true });
+  if (!gl) return;
+
+  const vsSource = `
+    attribute vec2 aPosition;
+    varying vec2 vUv;
+    void main() {
+      vUv = (aPosition + 1.0) * 0.5;
+      gl_Position = vec4(aPosition, 0.0, 1.0);
+    }
+  `;
+
+  const fsSource = `
+    precision highp float;
+    varying vec2 vUv;
+    uniform float uTime;
+    uniform vec2 uResolution;
+    uniform vec2 uMouse;
+
+    mat2 rot(float a) {
+      float c = cos(a), s = sin(a);
+      return mat2(c, -s, s, c);
+    }
+
+    float ribbonSDF(vec3 p, out float ribbonLayer, out float striation) {
+      vec3 q = p;
+      q.xz *= rot(uMouse.x * 0.5 + 0.3);
+      q.yz *= rot(uMouse.y * 0.3 - 0.2);
+      
+      float wave = sin(q.x * 2.2 + uTime * 1.4) * 0.45 
+                 + cos(q.z * 1.8 - uTime * 1.1) * 0.35
+                 + sin((q.x + q.z) * 1.5 + uTime * 0.8) * 0.2;
+
+      float yDist = q.y - wave;
+      float dBox = length(vec2(yDist, max(0.0, abs(q.x) - 1.6))) - 0.25;
+
+      striation = sin(q.x * 45.0 + q.z * 20.0 + wave * 25.0);
+      ribbonLayer = clamp((q.x + 1.6) / 3.2, 0.0, 1.0);
+
+      return dBox + striation * 0.015;
+    }
+
+    void main() {
+      vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / uResolution.y;
+
+      vec3 ro = vec3(0.0, 0.2, 3.4);
+      vec3 rd = normalize(vec3(uv, -1.5));
+
+      float d = 0.0;
+      float t = 0.0;
+      float ribbonLayer = 0.0;
+      float striation = 0.0;
+
+      for(int i = 0; i < 60; i++) {
+        vec3 p = ro + rd * t;
+        d = ribbonSDF(p, ribbonLayer, striation);
+        if(d < 0.002 || t > 8.0) break;
+        t += d * 0.65;
+      }
+
+      vec3 col = vec3(0.0);
+      float bgDist = length(uv);
+      vec3 bg = mix(vec3(0.08, 0.07, 0.13), vec3(0.05, 0.04, 0.08), bgDist);
+
+      float star = sin(uv.x * 70.0 + uTime * 2.0) * sin(uv.y * 60.0 - uTime * 1.5);
+      if(star > 0.96) {
+        bg += vec3(0.8, 0.7, 1.0) * (star - 0.96) * 12.0;
+      }
+
+      if(t < 8.0) {
+        vec3 p = ro + rd * t;
+        vec2 e = vec2(0.005, 0.0);
+        float dum1, dum2;
+        vec3 n = normalize(vec3(
+          ribbonSDF(p + e.xyy, dum1, dum2) - ribbonSDF(p - e.xyy, dum1, dum2),
+          ribbonSDF(p + e.yxy, dum1, dum2) - ribbonSDF(p - e.yxy, dum1, dum2),
+          ribbonSDF(p + e.yyx, dum1, dum2) - ribbonSDF(p - e.yyx, dum1, dum2)
+        ));
+
+        vec3 colViolet = vec3(0.65, 0.25, 0.95);
+        vec3 colPink   = vec3(0.98, 0.25, 0.60);
+        vec3 colOrange = vec3(1.00, 0.52, 0.12);
+        vec3 colGold   = vec3(1.00, 0.84, 0.28);
+        vec3 colYellow = vec3(1.00, 0.96, 0.60);
+
+        float gradPos = clamp(p.y * 1.2 + 0.5 + striation * 0.1, 0.0, 1.0);
+        vec3 baseColor;
+        if(gradPos < 0.33) {
+          baseColor = mix(colViolet, colPink, gradPos / 0.33);
+        } else if(gradPos < 0.66) {
+          baseColor = mix(colPink, colOrange, (gradPos - 0.33) / 0.33);
+        } else {
+          baseColor = mix(colOrange, colGold, (gradPos - 0.66) / 0.34);
+        }
+
+        vec3 lightDir = normalize(vec3(0.8, 1.2, 1.0));
+        float diff = max(0.0, dot(n, lightDir));
+        vec3 viewDir = -rd;
+        vec3 halfDir = normalize(lightDir + viewDir);
+        float spec = pow(max(0.0, dot(n, halfDir)), 28.0);
+        float fresnel = pow(1.0 - max(0.0, dot(n, viewDir)), 3.0);
+
+        float ridgeShadow = 0.85 + 0.15 * striation;
+
+        vec3 lit = baseColor * (0.35 + 0.65 * diff * ridgeShadow);
+        lit += colYellow * spec * 0.9;
+        lit += mix(colPink, colGold, fresnel) * fresnel * 0.6;
+
+        col = mix(lit, bg, smoothstep(4.0, 7.5, t));
+      } else {
+        col = bg;
+      }
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `;
+
+  function createShader(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    return s;
+  }
+
+  const program = gl.createProgram();
+  gl.attachShader(program, createShader(gl.VERTEX_SHADER, vsSource));
+  gl.attachShader(program, createShader(gl.FRAGMENT_SHADER, fsSource));
+  gl.linkProgram(program);
+  gl.useProgram(program);
+
+  const quad = new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
+
+  const aPos = gl.getAttribLocation(program, 'aPosition');
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  const uTime = gl.getUniformLocation(program, 'uTime');
+  const uRes = gl.getUniformLocation(program, 'uResolution');
+  const uMouse = gl.getUniformLocation(program, 'uMouse');
+
+  let mouseX = 0, mouseY = 0;
+  let targetX = 0, targetY = 0;
+
+  window.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
+      targetX = ((e.clientX - rect.left) / rect.width - 0.5) * 2.0;
+      targetY = ((e.clientY - rect.top) / rect.height - 0.5) * 2.0;
+    }
+  });
+
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = canvas.clientWidth * dpr;
+    const h = canvas.clientHeight * dpr;
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+      gl.viewport(0, 0, w, h);
+    }
+  }
+
+  let startTime = performance.now();
+  function render() {
+    resize();
+    const time = (performance.now() - startTime) * 0.001;
+
+    mouseX += (targetX - mouseX) * 0.08;
+    mouseY += (targetY - mouseY) * 0.08;
+
+    gl.uniform1f(uTime, time);
+    gl.uniform2f(uRes, canvas.width, canvas.height);
+    gl.uniform2f(uMouse, mouseX, mouseY);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    requestAnimationFrame(render);
+  }
+  requestAnimationFrame(render);
+})();
+
+// Initial data load
+loadDashboardData();
+</script>
+</body>
+</html>
