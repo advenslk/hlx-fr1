@@ -517,31 +517,51 @@ button, input, select, textarea {
 .bento-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
+  gap: 24px;
+  perspective: 1400px;
 }
 
 .bento-card {
   position: relative;
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
+  background:
+    radial-gradient(ellipse at 90% 0%, rgba(245, 184, 45, 0.085), transparent 52%),
+    linear-gradient(155deg, rgba(30, 29, 27, 0.96) 0%, rgba(16, 16, 17, 0.98) 58%, rgba(9, 9, 11, 1) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-lg);
   padding: 36px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  min-height: 240px;
+  justify-content: flex-end;
+  min-height: 235px;
   overflow: hidden;
-  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease, box-shadow 0.35s ease, background 0.3s ease;
+  transform: perspective(1200px) rotateX(var(--rx, 1.5deg)) rotateY(var(--ry, 0deg)) translateZ(0);
   transform-style: preserve-3d;
+  box-shadow:
+    0 7px 0 0 rgba(12, 12, 14, 0.96),
+    0 8px 0 0 rgba(255, 255, 255, 0.05),
+    0 24px 48px -10px rgba(0, 0, 0, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -4px 10px rgba(0, 0, 0, 0.65);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+  will-change: transform;
 }
 
 .bento-card::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(245, 176, 65, 0.1), transparent 45%);
+  background: radial-gradient(560px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(245, 184, 45, 0.13), transparent 45%);
   opacity: 0;
   transition: opacity 0.3s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.bento-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.01) 28%, transparent 55%);
   pointer-events: none;
   z-index: 1;
 }
@@ -551,68 +571,95 @@ button, input, select, textarea {
 }
 
 .bento-card:hover {
-  background: var(--card-hover);
-  border-color: rgba(245, 176, 65, 0.35);
-  transform: translateY(-6px) scale(1.015);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 40px rgba(245, 176, 65, 0.12);
-}
-
-.bento-num {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--card-border);
-  display: grid;
-  place-items: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  margin-bottom: 32px;
+  background:
+    radial-gradient(ellipse at 90% 0%, rgba(245, 184, 45, 0.14), transparent 55%),
+    linear-gradient(155deg, rgba(36, 34, 30, 0.98) 0%, rgba(19, 19, 21, 0.99) 58%, rgba(11, 11, 13, 1) 100%);
+  border-color: rgba(245, 184, 45, 0.42);
+  transform: perspective(1200px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateY(-8px) translateZ(14px);
+  box-shadow:
+    0 11px 0 0 rgba(14, 13, 11, 0.98),
+    0 12px 0 0 rgba(245, 184, 45, 0.18),
+    0 34px 70px -10px rgba(0, 0, 0, 0.95),
+    0 0 42px rgba(245, 184, 45, 0.14),
+    inset 0 1px 0 rgba(255, 234, 175, 0.28),
+    inset 0 -4px 12px rgba(0, 0, 0, 0.72);
 }
 
 .bento-content {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 11px;
   z-index: 2;
+  max-width: 82%;
+  transform: translateZ(24px);
 }
 
 .bento-content h3 {
-  font-size: 17px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 800;
   color: #ffffff;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
   text-transform: uppercase;
+  text-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.98),
+    0 6px 22px rgba(0, 0, 0, 0.95),
+    0 0 26px rgba(245, 184, 45, 0.18);
 }
 
 .bento-content p {
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--text-muted);
-  max-width: 420px;
+  font-size: 13.5px;
+  line-height: 1.62;
+  color: #dad4c8;
+  max-width: 440px;
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 1),
+    0 4px 16px rgba(0, 0, 0, 0.98),
+    0 0 10px rgba(0, 0, 0, 0.85);
 }
 
-.bento-visual-corner {
+.bento-card-bg {
   position: absolute;
-  right: -10px;
-  bottom: -10px;
-  width: 170px;
-  height: 170px;
+  inset: 0;
+  z-index: 0;
   pointer-events: none;
-  opacity: 0.9;
-  transition: transform 0.4s ease;
+  overflow: hidden;
+  border-radius: inherit;
 }
 
-.bento-card:hover .bento-visual-corner {
-  transform: scale(1.08) rotate(4deg);
+.bento-card-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(115% 110% at 15% 88%, rgba(9, 9, 11, 0.92) 0%, rgba(9, 9, 11, 0.62) 48%, rgba(9, 9, 11, 0.08) 100%),
+    linear-gradient(180deg, rgba(10, 10, 12, 0.18) 0%, rgba(10, 10, 12, 0.45) 100%);
+  pointer-events: none;
 }
 
-.bento-visual-corner img {
+.bento-card-bg img {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
+  object-position: right center;
+  opacity: 0.78;
+  transform: scale(1.03);
+  filter: saturate(1.18) contrast(1.08) brightness(1.08);
+  -webkit-mask-image: radial-gradient(115% 130% at 86% 42%, rgba(0, 0, 0, 1) 24%, rgba(0, 0, 0, 0.78) 52%, rgba(0, 0, 0, 0.2) 78%, rgba(0, 0, 0, 0) 100%);
+  mask-image: radial-gradient(115% 130% at 86% 42%, rgba(0, 0, 0, 1) 24%, rgba(0, 0, 0, 0.78) 52%, rgba(0, 0, 0, 0.2) 78%, rgba(0, 0, 0, 0) 100%);
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease, filter 0.4s ease;
+}
+
+.bento-card:hover .bento-card-bg img {
+  opacity: 0.95;
+  filter: saturate(1.24) contrast(1.1) brightness(1.14);
+  transform: scale(1.09);
+}
+
+@media (max-width: 640px) {
+  .bento-content {
+    max-width: 100%;
+  }
 }
 
 /* SPECIAL OFFER / CTA BANNER - Matching reference image */
@@ -1141,14 +1188,15 @@ button, input, select, textarea {
 .site-footer {
   margin-top: auto;
   border-top: 1px solid var(--card-border);
-  padding: 48px 48px 36px;
+  padding: 48px 48px 0;
   display: flex;
   flex-direction: column;
-  gap: 32px;
-  max-width: 1280px;
+  gap: 28px;
+  max-width: 1320px;
   width: 100%;
   margin-left: auto;
   margin-right: auto;
+  overflow: hidden;
 }
 
 .footer-top {
@@ -1184,6 +1232,54 @@ button, input, select, textarea {
   font-size: 12px;
   color: var(--text-subtle);
   flex-wrap: wrap;
+}
+
+.footer-giant-wordmark {
+  position: relative;
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px 0 18px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  user-select: none;
+  pointer-events: none;
+}
+
+.footer-giant-wordmark::before {
+  content: "";
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: 0;
+  height: 70%;
+  background: radial-gradient(ellipse at 50% 80%, rgba(20, 184, 166, 0.16), rgba(99, 102, 241, 0.06) 45%, transparent 72%);
+  filter: blur(28px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.footer-giant-wordmark img {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 1220px;
+  height: auto;
+  display: block;
+  object-fit: contain;
+  opacity: 0.94;
+  filter: drop-shadow(0 16px 42px rgba(20, 184, 166, 0.18));
+}
+
+@media (max-width: 760px) {
+  .site-footer {
+    padding: 36px 18px 0;
+    gap: 22px;
+  }
+
+  .footer-giant-wordmark {
+    padding: 6px 0 12px;
+  }
 }
 
 /* ================= AUTH SPLIT MODAL (Matching Uploaded Image) ================= */
@@ -1665,8 +1761,8 @@ body { overflow-x:hidden; }
 .page-content h2{font-size:clamp(19px,2.4vw,25px);letter-spacing:-.035em}
 .page-content h3{font-size:15px;letter-spacing:-.02em}
 .page-content p{font-size:12px;line-height:1.7}
-.plan-card,.table-panel,.tier-card,.bento-card{border-color:rgba(255,255,255,.075);background:radial-gradient(ellipse at 100% 0%,rgba(221,167,43,.045),transparent 42%),linear-gradient(145deg,rgba(20,20,18,.94),rgba(10,10,10,.98));box-shadow:0 12px 35px rgba(0,0,0,.22),inset 0 1px rgba(255,255,255,.025);transition:transform .28s cubic-bezier(.2,.75,.2,1),border-color .28s,box-shadow .28s}
-.plan-card:hover,.tier-card:hover,.bento-card:hover{transform:translateY(-3px);border-color:rgba(235,185,58,.26);box-shadow:0 22px 48px rgba(0,0,0,.34),0 0 32px rgba(220,165,38,.045),inset 0 1px rgba(255,255,255,.045)}
+.plan-card,.table-panel,.tier-card{border-color:rgba(255,255,255,.075);background:radial-gradient(ellipse at 100% 0%,rgba(221,167,43,.045),transparent 42%),linear-gradient(145deg,rgba(20,20,18,.94),rgba(10,10,10,.98));box-shadow:0 12px 35px rgba(0,0,0,.22),inset 0 1px rgba(255,255,255,.025);transition:transform .28s cubic-bezier(.2,.75,.2,1),border-color .28s,box-shadow .28s}
+.plan-card:hover,.tier-card:hover{transform:translateY(-3px);border-color:rgba(235,185,58,.26);box-shadow:0 22px 48px rgba(0,0,0,.34),0 0 32px rgba(220,165,38,.045),inset 0 1px rgba(255,255,255,.045)}
 .plan-service-tag{font-size:9px;letter-spacing:.13em}
 .plan-title{font-size:19px!important;line-height:1.25;letter-spacing:-.04em}
 .plan-desc{font-size:11px!important;color:#969186}

@@ -8,6 +8,10 @@ import {
 import ThreeHeroCanvas from './components/ThreeHeroCanvas.jsx';
 import VpsDeployModal from './components/VpsDeployModal.jsx';
 import MinecraftDeployModal from './components/MinecraftDeployModal.jsx';
+import serviceMinecraftBg from './assets/images/service_minecraft_bg_1794585441648.jpg';
+import serviceLxcBg from './assets/images/service_lxc_bg_1794585442080.jpg';
+import serviceLedgerBg from './assets/images/service_ledger_bg_1794585442923.jpg';
+import serviceInfraBg from './assets/images/service_infra_bg_1794585442788.jpg';
 
 const money = n => new Intl.NumberFormat('en-US').format(Number(n) || 0);
 const referralParam = new URLSearchParams(window.location.search).get('ref');
@@ -313,14 +317,26 @@ export default function App() {
     }
   }
 
-  // Mouse tilt helper for bento cards
+  // Mouse tilt helper for 3D bento cards
   const handleCardMouseMove = (e) => {
     const card = e.currentTarget;
     const rect = card.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    const px = (x / rect.width) - 0.5;
+    const py = (y / rect.height) - 0.5;
+    const rx = (-py * 10).toFixed(2);
+    const ry = (px * 10).toFixed(2);
     card.style.setProperty('--mouse-x', `${x}px`);
     card.style.setProperty('--mouse-y', `${y}px`);
+    card.style.setProperty('--rx', `${rx}deg`);
+    card.style.setProperty('--ry', `${ry}deg`);
+  };
+
+  const handleCardMouseLeave = (e) => {
+    const card = e.currentTarget;
+    card.style.setProperty('--rx', '0deg');
+    card.style.setProperty('--ry', '0deg');
   };
 
   // Display real enabled LXC and Minecraft plans from the backend
@@ -925,8 +941,10 @@ export default function App() {
 
             <div className="bento-grid">
               {/* Card 01 */}
-              <article className="bento-card" onMouseMove={handleCardMouseMove}>
-                <span className="bento-num">01</span>
+              <article className="bento-card" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
+                <div className="bento-card-bg" aria-hidden="true">
+                  <img src={serviceMinecraftBg} alt="Minecraft Cloud Hosting background" referrerPolicy="no-referrer" />
+                </div>
                 <div className="bento-content">
                   <h3>MINECRAFT CLOUD HOSTING</h3>
                   <p>High-clock Ryzen and EPYC cores with allocated RAM quotas, NVMe storage arrays, and low-latency BGP routing for Paper, Purpur, and Fabric worlds.</p>
@@ -934,8 +952,10 @@ export default function App() {
               </article>
 
               {/* Card 02 */}
-              <article className="bento-card" onMouseMove={handleCardMouseMove}>
-                <span className="bento-num">02</span>
+              <article className="bento-card" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
+                <div className="bento-card-bg" aria-hidden="true">
+                  <img src={serviceLxcBg} alt="Proxmox Linux Containers background" referrerPolicy="no-referrer" />
+                </div>
                 <div className="bento-content">
                   <h3>PROXMOX LINUX CONTAINERS (LXC)</h3>
                   <p>Production-ready isolated Linux containers with dedicated CPU thresholds, memory allocations, and SSH public key authentication for zero-credential vulnerability.</p>
@@ -943,27 +963,24 @@ export default function App() {
               </article>
 
               {/* Card 03 */}
-              <article className="bento-card" onMouseMove={handleCardMouseMove}>
-                <span className="bento-num">03</span>
+              <article className="bento-card" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
+                <div className="bento-card-bg" aria-hidden="true">
+                  <img src={serviceLedgerBg} alt="Verified HZL Reward Ledger background" referrerPolicy="no-referrer" />
+                </div>
                 <div className="bento-content">
                   <h3>VERIFIED HZL REWARD LEDGER</h3>
                   <p>Transparent community rewards. Earn non-cash HZL credit by inviting genuine members and boosting the Discord server, verified by our support team.</p>
                 </div>
               </article>
 
-              {/* Card 04 with 3D Ring asset */}
-              <article className="bento-card" onMouseMove={handleCardMouseMove}>
-                <span className="bento-num">04</span>
+              {/* Card 04 */}
+              <article className="bento-card" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
+                <div className="bento-card-bg" aria-hidden="true">
+                  <img src={serviceInfraBg} alt="Enterprise Infrastructure background" referrerPolicy="no-referrer" />
+                </div>
                 <div className="bento-content">
                   <h3>ENTERPRISE INFRASTRUCTURE</h3>
                   <p>Tier 3 datacenter presence with redundant power feeds, automated Proxmox virtualization clustering, and proactive DDoS edge filtering.</p>
-                </div>
-                <div className="bento-visual-corner">
-                  <img 
-                    src="/images/accessory-torus.jpg" 
-                    alt="Iridescent torus ring asset" 
-                    referrerPolicy="no-referrer"
-                  />
                 </div>
               </article>
             </div>
@@ -1281,6 +1298,13 @@ export default function App() {
         <div className="footer-bottom">
           <span>© 2026 HelzerX Cloud · Verified community cloud infrastructure.</span>
           <span>HZL is an internal reward credit for eligible hosting redemptions with no cash value.</span>
+        </div>
+        <div className="footer-giant-wordmark" aria-hidden="true">
+          <img
+            src="/assets/aistudio/IMG_20261101_210414-removebg-preview_ec8dc394.png"
+            alt="HelzerX"
+            referrerPolicy="no-referrer"
+          />
         </div>
       </footer>
     </div>
