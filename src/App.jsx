@@ -9,6 +9,7 @@ import ThreeHeroCanvas from './components/ThreeHeroCanvas.jsx';
 import VpsDeployModal from './components/VpsDeployModal.jsx';
 import MinecraftDeployModal from './components/MinecraftDeployModal.jsx';
 import SecurityCenter, { evaluatePasswordStrength } from './components/SecurityCenter.jsx';
+import DiscordInviteHub from './components/DiscordInviteHub.jsx';
 import serviceMinecraftBg from './assets/images/service_minecraft_bg_1794585441648.jpg';
 import serviceLxcBg from './assets/images/service_lxc_bg_1794585442080.jpg';
 import serviceLedgerBg from './assets/images/service_ledger_bg_1794585442923.jpg';
@@ -201,6 +202,9 @@ export default function App() {
         setAuthError('');
         setToast('Authenticated securely. Welcome to HelzerX Cloud!');
         loadData();
+      } else if (msg.type === 'OAUTH_DISCORD_LINKED') {
+        setToast(msg.message || 'Discord account linked! Your Discord invite hub is ready.');
+        loadData();
       } else if (msg.type === 'OAUTH_2FA_REQUIRED') {
         setAuthMode('login');
         setAuthStep('2fa');
@@ -208,7 +212,11 @@ export default function App() {
         setAuthInfo('Verify your 6-digit authenticator code to complete sign-in.');
         setAuthModalOpen(true);
       } else if (msg.type === 'OAUTH_JOIN_DISCORD' || msg.type === 'OAUTH_AUTH_ERROR') {
-        setAuthError(msg.message || 'Authentication could not be completed.');
+        if (authModalOpen) {
+          setAuthError(msg.message || 'Authentication could not be completed.');
+        } else {
+          setToast(msg.message || 'Authentication could not be completed.');
+        }
       }
     };
     window.addEventListener('message', handleOAuthMessage);
@@ -238,13 +246,119 @@ export default function App() {
     setToast('Account balance and server status refreshed.');
   }
 
-  async function copyInviteLink() {
-    const url = invite?.referralUrl || `${window.location.origin}/?ref=${me?.id || ''}`;
+  async function handleLinkDiscord() {
+    setBusy(true);
     try {
-      await navigator.clipboard.writeText(url);
-      setToast('Your unique referral URL has been copied to clipboard.');
+      const r = await fetch('/api/auth/discord/url?mode=link', { credentials: 'same-origin', cache: 'no-store' });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.url) {
+        setToast(d.error || 'Discord OAuth is not configured on the server yet.');
+        return;
+      }
+      const popup = window.open(d.url, 'helzerx_discord_link', 'width=540,height=680');
+      if (!popup) {
+        window.location.href = '/api/auth/discord?mode=link';
+      }
     } catch {
-      setToast(url);
+      setToast('Could not start Discord linking. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleUnlinkDiscord() {
+    setBusy(true);
+    try {
+      const r = await fetch('/api/invites/discord/unlink', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      const d = await r.json().catch(() => ({}));
+      setToast(d.message || d.error || 'Updated Discord link status.');
+      if (r.ok) {
+        setInvite(d);
+        await loadData();
+      }
+    } catch {
+      setToast('Could not unlink Discord account right now.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createDiscordInvite(regenerate = false) {
+    setBusy(true);
+    try {
+      const r = await fetch('/api/invites/discord/create', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ regenerate: Boolean(regenerate) })
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setToast(d.error || 'Could not generate personal Discord invite link.');
+        return;
+      }
+      setInvite(d);
+      setToast(d.message || 'Personal Discord server invite is ready!');
+      await loadData();
+    } catch {
+      setToast('Network error generating Discord invite.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function syncDiscordInvites() {
+    setBusy(true);
+    try {
+      const r = await fetch('/api/invites/discord/sync', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setToast(d.error || 'Could not sync Discord invites right now.');
+        return;
+      }
+      setInvite(d);
+      setToast(d.message || 'Discord server invites synced!');
+      await loadData();
+    } catch {
+      setToast('Network error syncing Discord invites.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitDiscordInviteClaim({ inviteCode, claimedCount, note }) {
+    setBusy(true);
+    try {
+      const r = await fetch('/api/invites/claim', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inviteCode, claimedCount, note })
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setToast(d.error || 'Could not submit invite verification claim.');
+        return false;
+      }
+      setInvite(d);
+      setToast(d.message || 'Invite verification claim submitted!');
+      await loadData();
+      return true;
+    } catch {
+      setToast('Network error submitting invite verification.');
+      return false;
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -911,58 +1025,23 @@ export default function App() {
             </section>
           )}
 
-          {/* TAB 3: INVITE & REFERRAL HUB */}
+          {/* TAB 3: DISCORD SERVER INVITE & REFERRAL HUB */}
           {activeTab === 'invites' && (
-            <section className="rewards-section" id="invites">
-              <div className="services-head">
-                <div>
-                  <div className="section-label">Community Expansion</div>
-                  <h2 className="services-title">Personal Referral Program</h2>
-                  <p className="services-sub">Share your referral link with builders and server owners. Once registered, HZL rewards are automatically attributed to your account.</p>
-                </div>
-              </div>
-
-              <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 'var(--radius-lg)', padding: '32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                  Your Unique Referral URL
-                </span>
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <input 
-                    type="text" 
-                    readOnly 
-                    value={invite?.referralUrl || `${window.location.origin}/?ref=${me.id}`} 
-                    style={{ flex: 1, minWidth: '280px', background: '#09090c', border: '1px solid var(--card-border)', borderRadius: 'var(--radius-sm)', padding: '12px 16px', color: '#fff', fontFamily: 'var(--font-mono)', fontSize: '13px' }}
-                  />
-                  <button className="btn-pill primary" onClick={copyInviteLink}>
-                    <Copy size={13} /> Copy Link
-                  </button>
-                </div>
-                <div style={{ display: 'flex', gap: '24px', fontSize: '13px', color: 'var(--text-muted)' }}>
-                  <span>Verified: <b style={{ color: '#fff' }}>{invite?.verifiedInvites || 0}</b></span>
-                  <span>Pending review: <b style={{ color: 'var(--accent-gold)' }}>{invite?.pendingInvites || 0}</b></span>
-                </div>
-              </div>
-
-              <div className="section-label" style={{ marginTop: '16px' }}>Invite Milestone Schedule</div>
-              <div className="tiers-grid">
-                {(rewards?.inviteTiers || defaultInviteTiers).map(([count, amount]) => {
-                  const achieved = (invite?.verifiedInvites || 0) >= count;
-                  return (
-                    <article className={`tier-card ${achieved ? 'featured' : ''}`} key={count} onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
-                      <div className="tier-header">
-                        <span className="tier-badge">TIER {count}</span>
-                        {achieved && <span style={{ color: '#2ecc71', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}><Check size={12} /> Achieved</span>}
-                      </div>
-                      <div className="tier-amount">
-                        <span className="tier-number">{money(amount)}</span>
-                        <span className="tier-unit">HZL</span>
-                      </div>
-                      <p className="tier-desc">Awarded after {count} verified genuine members join via your referral link.</p>
-                    </article>
-                  );
-                })}
-              </div>
-            </section>
+            <DiscordInviteHub
+              me={me}
+              invite={invite}
+              rewards={rewards}
+              defaultInviteTiers={defaultInviteTiers}
+              busy={busy}
+              onLinkDiscord={handleLinkDiscord}
+              onUnlinkDiscord={handleUnlinkDiscord}
+              onCreateDiscordInvite={createDiscordInvite}
+              onSyncDiscordInvites={syncDiscordInvites}
+              onSubmitInviteClaim={submitDiscordInviteClaim}
+              onToast={setToast}
+              onCardMouseMove={handleCardMouseMove}
+              onCardMouseLeave={handleCardMouseLeave}
+            />
           )}
 
           {/* TAB 4: BOOST CLAIMS */}
@@ -1030,6 +1109,7 @@ export default function App() {
               me={me}
               securityInfo={securityInfo}
               onRefreshSecurity={loadSecurityInfo}
+              onLinkDiscord={handleLinkDiscord}
               onToast={setToast}
               onSignedOut={() => {
                 setMe(null);

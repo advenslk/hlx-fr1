@@ -20,6 +20,19 @@ import {
   recordSecurityEvent,
   resolveGoogleOAuthConfig
 } from './auth-security.js';
+import {
+  INVITE_TIERS,
+  getEffectiveDiscordId,
+  findUserByDiscordId,
+  resolveDiscordCdnAvatar,
+  extractDiscordInviteCode,
+  buildServerInviteUrl,
+  getDiscordInviteConfig,
+  buildInviteSummary,
+  resolveTargetInviteChannelId,
+  createGuildInviteForMember,
+  fetchGuildInviteSnapshot
+} from './discord-invites.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -158,7 +171,7 @@ function ensureUser(id){
   if(!Array.isArray(data.hostingRequests))data.hostingRequests=[];
   return u;
 }
-const inviteTiers=[[2,200],[4,600],[8,900],[12,1300],[16,1700],[24,2400],[28,2900],[34,3400],[38,4000],[42,4500]];
+const inviteTiers=INVITE_TIERS;
 const boostTiers=[[1,2000],[2,4000],[3,4700],[4,5000],[7,6900],[10,10000]];
 function creditInviteMilestones(id){const u=ensureUser(id);for(const [count,amount] of inviteTiers){const key='invite:'+count;if(u.verifiedInvites>=count&&!u.creditedMilestones.includes(key)){u.balance+=amount;u.creditedMilestones.push(key);}}}
 function discordGuildMemberships(accessToken){return fetch('https://discord.com/api/users/@me/guilds',{headers:{Authorization:'Bearer '+accessToken,Accept:'application/json'},signal:AbortSignal.timeout(10000)});}
@@ -198,6 +211,8 @@ function resolveAvatarUrl(u){
 function publicUser(u){
   if(!u)return null;
   const account=data.users[u.id];
+  const discordId=getEffectiveDiscordId(u.id,account);
+  const discordAvatarHash=account?.discordAvatar||(!/^usr_/.test(String(u.id||''))?(account?.avatar||u.avatar):null);
   return {
     id:u.id,
     username:u.username,
@@ -205,7 +220,13 @@ function publicUser(u){
     email:account?.email||u.email||null,
     avatar:resolveAvatarUrl({...u,avatar:account?.avatar||u.avatar}),
     authProviders:Array.isArray(account?.authProviders)?account.authProviders:(Array.isArray(u.authProviders)?u.authProviders:[]),
-    twoFactorEnabled:Boolean(account?.twoFactorEnabled)
+    twoFactorEnabled:Boolean(account?.twoFactorEnabled),
+    discordLinked:Boolean(discordId),
+    discordId,
+    discordUsername:discordId?(account?.discordUsername||(!/^usr_/.test(String(u.id||''))?u.username:null)||null):null,
+    discordGlobalName:discordId?(account?.discordGlobalName||(!/^usr_/.test(String(u.id||''))?(u.global_name||u.username):null)||null):null,
+    discordAvatar:discordId?resolveDiscordCdnAvatar(discordId,discordAvatarHash):null,
+    discordInGuild:Boolean(account?.discordInGuild)
   };
 }
 function buildSessionUser(account,id){
@@ -273,9 +294,9 @@ app.get('/api/auth/providers',(req,res)=>{
   });
 });
 
-function buildDiscordAuthUrl({referral='',popup=false}){
+function buildDiscordAuthUrl({referral='',popup=false,action='login',linkUserId=null}){
   const state=crypto.randomBytes(32).toString('hex');
-  pendingOAuth.set(state,{provider:'discord',createdAt:Date.now(),referral,popup:Boolean(popup)});
+  pendingOAuth.set(state,{provider:'discord',createdAt:Date.now(),referral,popup:Boolean(popup),action,linkUserId});
   for(const [k,v] of pendingOAuth)if(Date.now()-v.createdAt>600000)pendingOAuth.delete(k);
   const u=new URL('https://discord.com/oauth2/authorize');
   u.searchParams.set('client_id',process.env.DISCORD_CLIENT_ID);
@@ -287,19 +308,34 @@ function buildDiscordAuthUrl({referral='',popup=false}){
 }
 app.get('/api/auth/discord/url',(req,res)=>{
   if(!process.env.DISCORD_CLIENT_ID||!process.env.DISCORD_REDIRECT_URI)return res.status(503).json({configured:false,error:'Discord OAuth is not configured yet.'});
-  const url=buildDiscordAuthUrl({referral:typeof req.query.ref==='string'?req.query.ref:'',popup:true});
+  const mode=req.query.mode==='link'?'link':'login';
+  if(mode==='link'&&!req.session?.user?.id){
+    return res.status(401).json({error:'Sign in first before linking your Discord account.'});
+  }
+  const url=buildDiscordAuthUrl({
+    referral:typeof req.query.ref==='string'?req.query.ref:'',
+    popup:true,
+    action:mode,
+    linkUserId:mode==='link'?req.session.user.id:null
+  });
   res.set('Cache-Control','no-store');
-  res.json({configured:true,url});
+  res.json({configured:true,url,mode});
 });
 app.get('/api/auth/discord',(req,res)=>{
   if(!process.env.DISCORD_CLIENT_ID||!process.env.DISCORD_REDIRECT_URI)return res.status(503).send('Discord login is not configured yet.');
-  res.redirect(buildDiscordAuthUrl({referral:typeof req.query.ref==='string'?req.query.ref:'',popup:false}));
+  const mode=req.query.mode==='link'&&req.session?.user?.id?'link':'login';
+  res.redirect(buildDiscordAuthUrl({
+    referral:typeof req.query.ref==='string'?req.query.ref:'',
+    popup:false,
+    action:mode,
+    linkUserId:mode==='link'?req.session.user.id:null
+  }));
 });
 app.get(['/api/auth/discord/callback','/api/auth/discord/callback/'],async(req,res)=>{
   const {code,state,error}=req.query;
   const issued=pendingOAuth.get(String(state||''));pendingOAuth.delete(String(state||''));
   const isPopup=Boolean(issued?.popup);
-  if(error){return isPopup?oauthPopupResponse(res,{ok:false,message:'Discord login was cancelled.'}):res.redirect('/?login=cancelled');}
+  if(error){return isPopup?oauthPopupResponse(res,{ok:false,message:'Discord authentication was cancelled.'}):res.redirect('/?login=cancelled');}
   const referral=issued?.referral||'';
   if(!issued||issued.provider!=='discord'||Date.now()-issued.createdAt>600000||typeof code!=='string'){
     return isPopup?oauthPopupResponse(res,{ok:false,message:'Invalid or expired Discord login state.'}):res.status(400).send('Invalid or expired Discord login state. Please return and try again.');
@@ -307,23 +343,102 @@ app.get(['/api/auth/discord/callback','/api/auth/discord/callback/'],async(req,r
   try{
     const form=new URLSearchParams({client_id:process.env.DISCORD_CLIENT_ID,client_secret:process.env.DISCORD_CLIENT_SECRET,grant_type:'authorization_code',code,redirect_uri:process.env.DISCORD_REDIRECT_URI});
     const tr=await fetch('https://discord.com/api/oauth2/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json'},body:form,signal:AbortSignal.timeout(10000)});const tok=await tr.json();if(!tr.ok||!tok.access_token)throw new Error('Discord token exchange failed');
-    const guildsResponse=await discordGuildMemberships(tok.access_token);let guilds=[];if(guildsResponse.ok)guilds=await guildsResponse.json();if(process.env.DISCORD_GUILD_ID&&(!guildsResponse.ok||!guilds.some(g=>g.id===process.env.DISCORD_GUILD_ID)))return isPopup?oauthPopupResponse(res,{ok:false,type:'OAUTH_JOIN_DISCORD',message:'Join the official HelzerX Discord server to sign in.'}):res.redirect('/?login=join-discord');
+    const guildsResponse=await discordGuildMemberships(tok.access_token);let guilds=[];if(guildsResponse.ok)guilds=await guildsResponse.json();
+    const configuredGuildId=String(process.env.DISCORD_GUILD_ID||'').trim();
+    const inGuild=Boolean(configuredGuildId&&guildsResponse.ok&&Array.isArray(guilds)&&guilds.some(g=>g.id===configuredGuildId));
     const mr=await fetch('https://discord.com/api/users/@me',{headers:{Authorization:'Bearer '+tok.access_token,Accept:'application/json'},signal:AbortSignal.timeout(10000)});const me=await mr.json();if(!mr.ok||!me.id)throw new Error('Discord identity lookup failed');
-    const member=ensureUser(me.id);
+
+    if(issued.action==='link'){
+      const targetId=issued.linkUserId;
+      const targetUser=targetId?data.users[targetId]:null;
+      if(!targetUser)return isPopup?oauthPopupResponse(res,{ok:false,message:'Your web session expired. Please sign in again and retry linking Discord.'}):res.redirect('/?login=required');
+      if(targetUser.status==='suspended')return isPopup?oauthPopupResponse(res,{ok:false,message:'Account is suspended.'}):res.redirect('/?login=failed');
+
+      const existingOwner=findUserByDiscordId(data.users,me.id);
+      if(existingOwner&&existingOwner.id!==targetId){
+        return isPopup?oauthPopupResponse(res,{ok:false,type:'OAUTH_AUTH_ERROR',message:'This Discord account is already linked to another HelzerX account.'}):res.redirect('/?login=failed');
+      }
+
+      ensureUser(targetId);
+      targetUser.discordId=me.id;
+      targetUser.discordUsername=me.username;
+      targetUser.discordGlobalName=me.global_name||me.username;
+      targetUser.discordAvatar=me.avatar||null;
+      targetUser.discordInGuild=configuredGuildId?inGuild:true;
+      targetUser.discordLinkedAt=targetUser.discordLinkedAt||new Date().toISOString();
+      if(!targetUser.avatar&&me.avatar)targetUser.avatar=resolveDiscordCdnAvatar(me.id,me.avatar);
+      if(!targetUser.authProviders.includes('discord'))targetUser.authProviders.push('discord');
+
+      const inviteCfg=getDiscordInviteConfig(process.env);
+      if(inviteCfg.botConfigured){
+        try{
+          const snap=await fetchGuildInviteSnapshot({guildId:inviteCfg.guildId,botToken:inviteCfg.botToken,discordId:me.id,registeredCode:targetUser.discordInviteCode});
+          if(snap.inGuild!==null)targetUser.discordInGuild=snap.inGuild;
+          targetUser.discordInviteUses=snap.totalUses;
+          targetUser.discordTrackedCodes=snap.trackedInvites;
+          targetUser.discordLastSyncedAt=new Date().toISOString();
+          if(!targetUser.discordInviteCode&&snap.trackedInvites.length>0){
+            targetUser.discordInviteCode=snap.trackedInvites[0].code;
+            targetUser.discordInviteUrl=snap.trackedInvites[0].url;
+          }
+          if(!targetUser.discordInviteCode&&targetUser.discordInGuild){
+            const channelId=await resolveTargetInviteChannelId({guildId:inviteCfg.guildId,configuredChannelId:inviteCfg.inviteChannelId,botToken:inviteCfg.botToken});
+            const createdInv=await createGuildInviteForMember({guildId:inviteCfg.guildId,channelId,botToken:inviteCfg.botToken,discordId:me.id,username:me.username});
+            targetUser.discordInviteCode=createdInv.code;
+            targetUser.discordInviteUrl=createdInv.url;
+            targetUser.discordInviteChannelId=createdInv.channelId;
+            targetUser.discordInviteCreatedAt=createdInv.createdAt;
+            targetUser.discordTrackedCodes=[createdInv,...(targetUser.discordTrackedCodes||[])];
+          }
+          targetUser.verifiedInvites=Math.max(Number(targetUser.verifiedInvites)||0,Number(targetUser.discordInviteUses||0)+Number(targetUser.manualInviteBonus||0));
+          creditInviteMilestones(targetId);
+        }catch(botErr){
+          console.warn('[discord invite link auto-sync]',botErr.message);
+        }
+      }
+
+      if(req.session?.user?.id===targetId){
+        req.session.user=buildSessionUser(targetUser,targetId);
+      }
+      recordSecurityEvent(targetUser,req,'discord_linked',`Linked Discord account @${me.username}`,'success');
+      writeData();
+      return req.session.save(e=>{
+        if(e)return isPopup?oauthPopupResponse(res,{ok:false,message:'Could not update session after linking Discord.'}):res.redirect('/?login=failed');
+        return isPopup?oauthPopupResponse(res,{ok:true,type:'OAUTH_DISCORD_LINKED',message:`Discord @${me.username} linked successfully!`}):res.redirect('/?login=success');
+      });
+    }
+
+    if(configuredGuildId&&(!guildsResponse.ok||!inGuild))return isPopup?oauthPopupResponse(res,{ok:false,type:'OAUTH_JOIN_DISCORD',message:'Join the official HelzerX Discord server to sign in.'}):res.redirect('/?login=join-discord');
+
+    const matched=findUserByDiscordId(data.users,me.id);
+    const targetUserId=matched?matched.id:me.id;
+    const member=ensureUser(targetUserId);
     if(member.status==='suspended')return isPopup?oauthPopupResponse(res,{ok:false,message:'Account is suspended.'}):res.redirect('/?login=failed');
-    member.username=me.username;member.global_name=me.global_name||me.username;member.avatar=me.avatar||member.avatar||null;
+    if(!/^usr_/.test(targetUserId)){
+      member.username=me.username;
+      member.global_name=me.global_name||me.username;
+      member.avatar=me.avatar||member.avatar||null;
+    }else if(!member.avatar&&me.avatar){
+      member.avatar=resolveDiscordCdnAvatar(me.id,me.avatar);
+    }
+    member.discordId=me.id;
+    member.discordUsername=me.username;
+    member.discordGlobalName=me.global_name||me.username;
+    member.discordAvatar=me.avatar||null;
+    member.discordInGuild=true;
+    member.discordLinkedAt=member.discordLinkedAt||new Date().toISOString();
     if(!member.authProviders.includes('discord'))member.authProviders.push('discord');
-    if(referral&&referral!==me.id&&!member.referrer&&!member.pendingReferrer&&data.users[referral]){member.pendingReferrer=referral;data.inviteClaims.push({id:crypto.randomUUID(),referrerId:referral,inviteeId:me.id,inviteeUsername:me.username,status:'pending',createdAt:new Date().toISOString()});}
+    if(referral&&referral!==targetUserId&&!member.referrer&&!member.pendingReferrer&&data.users[referral]){member.pendingReferrer=referral;data.inviteClaims.push({id:crypto.randomUUID(),referrerId:referral,inviteeId:targetUserId,inviteeUsername:me.username,status:'pending',createdAt:new Date().toISOString()});}
     await new Promise((resolve,reject)=>req.session.regenerate(e=>e?reject(e):resolve()));
     if(member.twoFactorEnabled){
-      req.session.pending2fa={userId:me.id,method:'totp',issuedAt:Date.now(),provider:'discord'};
+      req.session.pending2fa={userId:targetUserId,method:'totp',issuedAt:Date.now(),provider:'discord'};
       writeData();
       return req.session.save(e=>{
         if(e)return res.status(500).send('Could not initialize 2FA challenge.');
         return isPopup?oauthPopupResponse(res,{ok:true,type:'OAUTH_2FA_REQUIRED',message:'2FA verification required.'}):res.redirect('/?login=2fa');
       });
     }
-    req.session.user=buildSessionUser(member,me.id);
+    req.session.user=buildSessionUser(member,targetUserId);
     recordSecurityEvent(member,req,'oauth_discord_login','Signed in via Discord OAuth2','success');
     writeData();
     req.session.save(e=>{
@@ -688,6 +803,7 @@ app.get('/api/auth/2fa/pending',(req,res)=>{
 app.get('/api/auth/security',auth,(req,res)=>{
   const u=ensureUser(req.session.user.id);
   const backupRemaining=Array.isArray(u.backupCodeHashes)?u.backupCodeHashes.filter(c=>c&&!c.usedAt).length:0;
+  const discordId=getEffectiveDiscordId(req.session.user.id,u);
   res.set('Cache-Control','no-store');
   res.json({
     id:req.session.user.id,
@@ -698,6 +814,10 @@ app.get('/api/auth/security',auth,(req,res)=>{
     twoFactorEnabled:Boolean(u.twoFactorEnabled),
     backupCodesRemaining:backupRemaining,
     sessionVersion:u.sessionVersion,
+    discordLinked:Boolean(discordId),
+    discordId,
+    discordUsername:discordId?(u.discordUsername||req.session.user.username):null,
+    discordInGuild:Boolean(u.discordInGuild),
     securityEvents:u.securityEvents.slice(0,20)
   });
 });
@@ -819,7 +939,163 @@ app.post('/api/auth/logout',sameOriginAuthGuard,(req,res)=>req.session.destroy(e
 }));
 app.get('/api/me',auth,async(req,res)=>{res.set('Cache-Control','no-store');res.json({user:publicUser(req.session.user),rewards:await rewardsFor(req.session.user)});});
 app.get('/api/rewards',auth,async(req,res)=>{res.set('Cache-Control','no-store');res.json(await rewardsFor(req.session.user));});
-app.get('/api/invites',auth,(req,res)=>{const u=ensureUser(req.session.user.id);res.set('Cache-Control','no-store');res.json({referralCode:req.session.user.id,referralUrl:(process.env.APP_URL||'https://perks.helzerx.cyou')+'/?ref='+encodeURIComponent(req.session.user.id),verifiedInvites:u.verifiedInvites,pendingInvites:data.inviteClaims.filter(c=>c.referrerId===req.session.user.id&&c.status==='pending').length,creditedMilestones:u.creditedMilestones});});
+app.get('/api/invites',auth,(req,res)=>{
+  const u=ensureUser(req.session.user.id);
+  res.set('Cache-Control','no-store');
+  res.json(buildInviteSummary({userId:req.session.user.id,user:u,data,env:process.env}));
+});
+
+app.post('/api/invites/discord/create',auth,sameOriginAuthGuard,requireJsonAuth,async(req,res)=>{
+  const userId=req.session.user.id;
+  const u=ensureUser(userId);
+  const discordId=getEffectiveDiscordId(userId,u);
+  if(!discordId){
+    return res.status(400).json({error:'Link your Discord account first before generating a personal Discord server invite link.'});
+  }
+  const cfg=getDiscordInviteConfig(process.env);
+  if(!cfg.botConfigured){
+    return res.status(503).json({
+      error:'Automatic Discord invite generation requires DISCORD_BOT_TOKEN and DISCORD_GUILD_ID on the server. Meanwhile you can submit your personal Discord invite code below.',
+      botConfigured:false
+    });
+  }
+  const regenerate=req.body?.regenerate===true;
+  if(u.discordInviteCode&&!regenerate){
+    return res.json({ok:true,reused:true,...buildInviteSummary({userId,user:u,data,env:process.env})});
+  }
+  try{
+    const channelId=await resolveTargetInviteChannelId({guildId:cfg.guildId,configuredChannelId:cfg.inviteChannelId,botToken:cfg.botToken});
+    const created=await createGuildInviteForMember({guildId:cfg.guildId,channelId,botToken:cfg.botToken,discordId,username:u.discordUsername||u.username});
+    u.discordInviteCode=created.code;
+    u.discordInviteUrl=created.url;
+    u.discordInviteChannelId=created.channelId;
+    u.discordInviteCreatedAt=created.createdAt;
+    const prevTracked=Array.isArray(u.discordTrackedCodes)?u.discordTrackedCodes.filter(x=>x&&x.code!==created.code):[];
+    u.discordTrackedCodes=[created,...prevTracked];
+    recordSecurityEvent(u,req,'discord_invite_created',`Generated personal Discord server invite ${created.url}`,'info');
+    writeData();
+    return res.status(201).json({ok:true,message:`Personal Discord server invite ${created.url} is ready!`,...buildInviteSummary({userId,user:u,data,env:process.env})});
+  }catch(err){
+    console.error('[discord invite create]',err.message);
+    return res.status(502).json({error:String(err.message||'Could not generate Discord server invite. Verify bot permissions (Create Instant Invite & Manage Server).')});
+  }
+});
+
+app.post('/api/invites/discord/sync',auth,sameOriginAuthGuard,requireJsonAuth,async(req,res)=>{
+  const userId=req.session.user.id;
+  const u=ensureUser(userId);
+  const discordId=getEffectiveDiscordId(userId,u);
+  if(!discordId){
+    return res.status(400).json({error:'Link your Discord account first to sync your Discord server invites.'});
+  }
+  const cfg=getDiscordInviteConfig(process.env);
+  if(!cfg.botConfigured){
+    return res.status(503).json({
+      error:'Live Discord invite sync requires DISCORD_BOT_TOKEN on the server. Submit your invite claim below for manual verification.',
+      botConfigured:false,
+      ...buildInviteSummary({userId,user:u,data,env:process.env})
+    });
+  }
+  try{
+    const beforeBalance=Number(u.balance)||0;
+    const snap=await fetchGuildInviteSnapshot({guildId:cfg.guildId,botToken:cfg.botToken,discordId,registeredCode:u.discordInviteCode});
+    if(snap.inGuild!==null)u.discordInGuild=snap.inGuild;
+    u.discordInviteUses=snap.totalUses;
+    u.discordTrackedCodes=snap.trackedInvites;
+    u.discordLastSyncedAt=new Date().toISOString();
+    if(!u.discordInviteCode&&snap.trackedInvites.length>0){
+      u.discordInviteCode=snap.trackedInvites[0].code;
+      u.discordInviteUrl=snap.trackedInvites[0].url;
+    }
+    const targetVerified=Math.max(Number(u.verifiedInvites)||0,Number(snap.totalUses||0)+Number(u.manualInviteBonus||0));
+    u.verifiedInvites=targetVerified;
+    creditInviteMilestones(userId);
+    const newlyEarnedHzl=(Number(u.balance)||0)-beforeBalance;
+    writeData();
+    return res.json({
+      ok:true,
+      newlyEarnedHzl,
+      message:newlyEarnedHzl>0
+        ?`Synced ${snap.totalUses} Discord invite uses and credited +${newlyEarnedHzl} HZL!`
+        :`Synced live Discord server invites (${snap.totalUses} total server uses).`,
+      ...buildInviteSummary({userId,user:u,data,env:process.env})
+    });
+  }catch(err){
+    console.error('[discord invite sync]',err.message);
+    return res.status(502).json({error:String(err.message||'Could not sync invites from Discord API. Check Manage Server permission on the bot.')});
+  }
+});
+
+app.post('/api/invites/claim',auth,sameOriginAuthGuard,requireJsonAuth,(req,res)=>{
+  const userId=req.session.user.id;
+  const u=ensureUser(userId);
+  const discordId=getEffectiveDiscordId(userId,u);
+  if(!discordId){
+    return res.status(400).json({error:'Please link your Discord account before submitting a Discord server invite claim.'});
+  }
+  const code=extractDiscordInviteCode(req.body?.inviteCode||req.body?.inviteUrl||u.discordInviteCode||'');
+  if(!code){
+    return res.status(400).json({error:'Enter a valid Discord server invite URL or code (e.g. https://discord.gg/yourcode).'});
+  }
+  const claimedCount=Number(req.body?.claimedCount??1);
+  if(!Number.isInteger(claimedCount)||claimedCount<1||claimedCount>500){
+    return res.status(400).json({error:'Claimed invite count must be a whole number between 1 and 500.'});
+  }
+  const note=String(req.body?.note||'').trim().slice(0,240);
+  const hasPending=data.inviteClaims.some(c=>c.referrerId===userId&&c.status==='pending'&&c.type==='discord_server');
+  if(hasPending){
+    return res.status(409).json({error:'You already have a pending Discord server invite verification claim. Wait for review before submitting another.'});
+  }
+  if(!u.discordInviteCode){
+    u.discordInviteCode=code;
+    u.discordInviteUrl=buildServerInviteUrl(code);
+  }
+  const claim={
+    id:crypto.randomUUID(),
+    type:'discord_server',
+    referrerId:userId,
+    inviteeId:discordId,
+    inviteeUsername:u.discordUsername||u.username||'Discord Member',
+    discordId,
+    discordUsername:u.discordUsername||u.username||null,
+    inviteCode:code,
+    claimedCount,
+    note:note||null,
+    status:'pending',
+    createdAt:new Date().toISOString()
+  };
+  data.inviteClaims.push(claim);
+  writeData();
+  res.status(201).json({
+    ok:true,
+    message:`Submitted Discord invite code "${code}" (${claimedCount} invites) for verification.`,
+    ...buildInviteSummary({userId,user:u,data,env:process.env})
+  });
+});
+
+app.post('/api/invites/discord/unlink',auth,sameOriginAuthGuard,requireJsonAuth,(req,res)=>{
+  const userId=req.session.user.id;
+  const u=ensureUser(userId);
+  const hasAlternateAuth=Boolean((u.email&&u.passwordHash)||u.googleSub||u.authProviders.includes('email')||u.authProviders.includes('google'));
+  if(!hasAlternateAuth){
+    return res.status(409).json({error:'Cannot unlink Discord because it is your only sign-in method. Link Google or set a password in Security first.'});
+  }
+  u.discordId=null;
+  u.discordUsername=null;
+  u.discordGlobalName=null;
+  u.discordAvatar=null;
+  u.discordInGuild=false;
+  u.discordLinkedAt=null;
+  u.discordInviteCode=null;
+  u.discordInviteUrl=null;
+  u.discordInviteUses=0;
+  u.discordTrackedCodes=[];
+  u.discordLastSyncedAt=null;
+  u.authProviders=u.authProviders.filter(p=>p!=='discord');
+  recordSecurityEvent(u,req,'discord_unlinked','Unlinked Discord account from Invite Hub','warning');
+  writeData();
+  res.json({ok:true,message:'Discord account unlinked.',...buildInviteSummary({userId,user:u,data,env:process.env})});
+});
 function configuredVpsNodes(){
  let list=[];try{list=JSON.parse(process.env.PROXMOX_NODES||'[]')}catch{}
  if(!Array.isArray(list)||!list.length)list=[{id:String(process.env.PROXMOX_NODE||'hlx-infra-02'),label:String(process.env.PROXMOX_NODE||'hlx-infra-02'),surcharge:0}];
@@ -1170,7 +1446,39 @@ app.post('/api/admin/logout',adminMutationOrigin,(req,res)=>req.session.destroy(
 }));
 app.get('/api/admin/boost-claims',adminOnly,(_req,res)=>res.json({claims:data.claims}));
 app.get('/api/admin/invite-claims',adminOnly,(_req,res)=>res.json({claims:data.inviteClaims.filter(c=>c.status==='pending')}));
-app.post('/api/admin/invite-claims/:id/review',adminOnly,adminMutationOrigin,(req,res)=>{const claim=data.inviteClaims.find(c=>c.id===req.params.id);if(!claim)return res.status(404).json({error:'Invite claim not found'});if(claim.status!=='pending')return res.status(409).json({error:'Invite claim has already been reviewed'});const action=req.body?.action;if(!['approve','reject'].includes(action))return res.status(400).json({error:'Action must be approve or reject'});claim.status=action==='approve'?'approved':'rejected';claim.reviewedAt=new Date().toISOString();const invitee=ensureUser(claim.inviteeId);invitee.pendingReferrer=null;if(action==='approve'){invitee.referrer=claim.referrerId;const owner=ensureUser(claim.referrerId);owner.verifiedInvites+=1;creditInviteMilestones(claim.referrerId);}writeData();res.json({ok:true,claim});});
+app.post('/api/admin/invite-claims/:id/review',adminOnly,adminMutationOrigin,(req,res)=>{
+  const claim=data.inviteClaims.find(c=>c.id===req.params.id);
+  if(!claim)return res.status(404).json({error:'Invite claim not found'});
+  if(claim.status!=='pending')return res.status(409).json({error:'Invite claim has already been reviewed'});
+  const action=req.body?.action;
+  if(!['approve','reject'].includes(action))return res.status(400).json({error:'Action must be approve or reject'});
+  claim.status=action==='approve'?'approved':'rejected';
+  claim.reviewedAt=new Date().toISOString();
+  if(claim.type==='discord_server'){
+    if(action==='approve'){
+      const owner=ensureUser(claim.referrerId);
+      const addCount=Math.max(1,Number(claim.claimedCount||1));
+      owner.manualInviteBonus=(Number(owner.manualInviteBonus)||0)+addCount;
+      owner.verifiedInvites=Math.max(Number(owner.verifiedInvites)||0,(Number(owner.verifiedInvites)||0)+addCount);
+      creditInviteMilestones(claim.referrerId);
+    }
+  }else{
+    if(data.users[claim.inviteeId]){
+      const invitee=ensureUser(claim.inviteeId);
+      invitee.pendingReferrer=null;
+      if(action==='approve')invitee.referrer=claim.referrerId;
+    }
+    if(action==='approve'){
+      const owner=ensureUser(claim.referrerId);
+      owner.manualInviteBonus=(Number(owner.manualInviteBonus)||0)+1;
+      owner.verifiedInvites=(Number(owner.verifiedInvites)||0)+1;
+      creditInviteMilestones(claim.referrerId);
+    }
+  }
+  auditAdmin(req,'invite_claim_'+action,'invite_claim',claim.id,{type:claim.type||'referral',referrerId:claim.referrerId,claimedCount:claim.claimedCount||1,inviteCode:claim.inviteCode||null});
+  writeData();
+  res.json({ok:true,claim});
+});
 app.get('/api/admin/hosting-requests',adminOnly,(_req,res)=>res.json({requests:data.hostingRequests.map(({sshPublicKey,...x})=>x)}));
 app.post('/api/admin/hosting-requests/:id/review',adminOnly,adminMutationOrigin,async(req,res)=>{const item=data.hostingRequests.find(x=>x.id===req.params.id);if(!item)return res.status(404).json({error:'Hosting request not found'});if(item.status!=='pending')return res.status(409).json({error:'Hosting request has already been reviewed'});const action=req.body?.action;if(!['approve','reject'].includes(action))return res.status(400).json({error:'Action must be approve or reject'});const u=ensureUser(item.userId);if(action==='reject'){item.status='rejected';item.reviewedAt=new Date().toISOString();item.updatedAt=item.reviewedAt;writeData();return res.json({ok:true,request:item})}if(u.balance<item.cost)return res.status(409).json({error:'User balance is no longer sufficient'});const plan=item.planSnapshot||data.plans.find(x=>x.id===item.planId&&x.service===item.service&&x.proxmox);if(!plan||!plan.proxmox||plan.service!=='lxc')return res.status(409).json({error:'Only explicitly configured LXC plans can be provisioned. No HZL was deducted.'});const readiness=proxmoxReadiness();if(!readiness.ready)return res.status(503).json({error:'Proxmox provisioning is not ready. No HZL was deducted.',missing:readiness.missing});u.balance-=item.cost;item.status='provisioning';item.provisioningStatus='creating-container';item.reviewedAt=new Date().toISOString();item.updatedAt=item.reviewedAt;item.provisioningAttempts=(item.provisioningAttempts||0)+1;writeData();try{const created=await provisionLxc({requestId:item.id,plan,username:item.username,sshPublicKey:item.sshPublicKey});item.status='provisioned';item.provisioningStatus='container-start-requested';item.vmid=created.vmid;item.hostname=created.hostname;item.proxmoxTask=created.upid;item.updatedAt=new Date().toISOString();writeData();return res.json({ok:true,request:item})}catch(e){item.status='provisioning-error';item.provisioningStatus='needs-admin-reconciliation';item.error=String(e.message||'Provisioning failed').slice(0,500);item.updatedAt=new Date().toISOString();writeData();console.error('[proxmox provisioning]',item.id,item.error);return res.status(502).json({error:'Provisioning did not complete cleanly. The request is locked against duplicate provisioning and requires admin reconciliation; HZL was not automatically refunded to avoid double provisioning.',request:{id:item.id,status:item.status,provisioningStatus:item.provisioningStatus}})}});
 app.post('/api/admin/boost-claims/:id/review',adminOnly,adminMutationOrigin,(req,res)=>{const claim=data.claims.find(c=>c.id===req.params.id);if(!claim)return res.status(404).json({error:'Claim not found'});if(claim.status!=='pending')return res.status(409).json({error:'Claim has already been reviewed'});const action=req.body?.action;if(!['approve','reject'].includes(action))return res.status(400).json({error:'Action must be approve or reject'});claim.status=action==='approve'?'approved':'rejected';claim.reviewedAt=new Date().toISOString();if(action==='approve'){const u=ensureUser(claim.userId);u.balance+=claim.amount;u.activeBoosts=Math.max(u.activeBoosts,claim.boosts);}writeData();res.json({ok:true,claim});});
@@ -1180,7 +1488,8 @@ function auditAdmin(req,action,targetType,targetId,details={}) {
   if(data.auditLogs.length>5000)data.auditLogs.length=5000;
 }
 function safeAdminUser(id,u) {
-  return {id,username:u.username||u.global_name||'Unknown',email:u.email||null,balance:Number(u.balance)||0,verifiedInvites:Number(u.verifiedInvites)||0,activeBoosts:Number(u.activeBoosts)||0,createdAt:u.createdAt||null,status:u.status==='suspended'?'suspended':'active',avatar:u.avatar||null,referrer:u.referrer||null};
+  const discordId=getEffectiveDiscordId(id,u);
+  return {id,username:u.username||u.global_name||'Unknown',email:u.email||null,balance:Number(u.balance)||0,verifiedInvites:Number(u.verifiedInvites)||0,activeBoosts:Number(u.activeBoosts)||0,createdAt:u.createdAt||null,status:u.status==='suspended'?'suspended':'active',avatar:u.avatar||null,referrer:u.referrer||null,discordId,discordUsername:u.discordUsername||null,discordInGuild:Boolean(u.discordInGuild),discordInviteCode:u.discordInviteCode||null,discordInviteUses:Number(u.discordInviteUses||0)};
 }
 app.get('/api/tickets',auth,(req,res)=>{res.set('Cache-Control','no-store');res.json({tickets:data.tickets.filter(t=>t.userId===req.session.user.id).map(({messages=[],...t})=>({...t,messageCount:messages.length,lastMessageAt:messages.at(-1)?.createdAt||t.createdAt}))})});
 app.post('/api/tickets',auth,adminMutationOrigin,(req,res)=>{

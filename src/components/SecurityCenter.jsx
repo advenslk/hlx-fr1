@@ -30,7 +30,7 @@ export function evaluatePasswordStrength(password = '') {
   };
 }
 
-export default function SecurityCenter({ me, securityInfo, onRefreshSecurity, onToast, onSignedOut }) {
+export default function SecurityCenter({ me, securityInfo, onRefreshSecurity, onLinkDiscord, onToast, onSignedOut }) {
   const [busy, setBusy] = useState(false);
   const [totpSetup, setTotpSetup] = useState(null); // { secret, qrDataUrl, otpauthUrl }
   const [totpCode, setTotpCode] = useState('');
@@ -304,11 +304,20 @@ export default function SecurityCenter({ me, securityInfo, onRefreshSecurity, on
                 <Check size={13} color="#4ade80" /> Google Linked
               </span>
             )}
-            {providers.includes('discord') && (
+            {(providers.includes('discord') || securityInfo?.discordLinked) ? (
               <span className="sec-provider-pill">
-                <Check size={13} color="#a855f7" /> Discord Linked
+                <Check size={13} color="#a855f7" /> Discord Linked{securityInfo?.discordUsername ? ` (@${securityInfo.discordUsername})` : ''}
               </span>
-            )}
+            ) : onLinkDiscord ? (
+              <button
+                type="button"
+                className="sec-provider-pill"
+                style={{ cursor: 'pointer', borderColor: 'rgba(168, 85, 247, 0.4)', color: '#d8b4fe' }}
+                onClick={onLinkDiscord}
+              >
+                + Link Discord Account
+              </button>
+            ) : null}
             {providers.includes('email') && (
               <span className="sec-provider-pill">
                 <Lock size={13} color="#f5c84d" /> Password Auth
