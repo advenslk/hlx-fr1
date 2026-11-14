@@ -27,13 +27,77 @@ export function findUserByDiscordId(users, discordId) {
   const idStr = String(discordId || '').trim();
   if (!idStr || !users || typeof users !== 'object') return null;
 
-  for (const [id, u] of Object.entries(users)) {
+  // Prefer active web accounts (`usr_*`) over legacy Discord-keyed records if both ever existed
+  const entries = Object.entries(users);
+  for (const [id, u] of entries) {
+    if (u && u.discordId === idStr && /^usr_/.test(id)) {
+      return { id, user: u };
+    }
+  }
+  for (const [id, u] of entries) {
     if (!u) continue;
     if (u.discordId === idStr || id === idStr) {
       return { id, user: u };
     }
   }
   return null;
+}
+
+export function isDiscordOnlyAccount(userId, user) {
+  if (!user) return false;
+  if (user.email || user.googleSub || user.passwordHash) return false;
+  const providers = Array.isArray(user.authProviders) ? user.authProviders : [];
+  if (providers.some(p => p === 'email' || p === 'google')) return false;
+  return Boolean(!/^usr_/.test(String(userId || '')) || providers.every(p => p === 'discord'));
+}
+
+export function mergeDiscordAccountIntoUser({ data, sourceId, targetId }) {
+  if (!data?.users?.[sourceId] || !data?.users?.[targetId] || sourceId === targetId) {
+    return false;
+  }
+  const src = data.users[sourceId];
+  const dst = data.users[targetId];
+
+  const srcMilestones = Array.isArray(src.creditedMilestones) ? src.creditedMilestones : [];
+  const dstMilestones = Array.isArray(dst.creditedMilestones) ? dst.creditedMilestones : [];
+  dst.creditedMilestones = Array.from(new Set([...dstMilestones, ...srcMilestones]));
+
+  dst.balance = (Number(dst.balance) || 0) + (Number(src.balance) || 0);
+  dst.verifiedInvites = Math.max(Number(dst.verifiedInvites) || 0, Number(src.verifiedInvites) || 0);
+  dst.activeBoosts = Math.max(Number(dst.activeBoosts) || 0, Number(src.activeBoosts) || 0);
+  dst.discordInviteUses = Math.max(Number(dst.discordInviteUses) || 0, Number(src.discordInviteUses) || 0);
+  dst.manualInviteBonus = Math.max(Number(dst.manualInviteBonus) || 0, Number(src.manualInviteBonus) || 0);
+
+  if (!dst.discordInviteCode && src.discordInviteCode) dst.discordInviteCode = src.discordInviteCode;
+  if (!dst.discordInviteUrl && src.discordInviteUrl) dst.discordInviteUrl = src.discordInviteUrl;
+  if (!dst.referrer && src.referrer) dst.referrer = src.referrer;
+
+  const srcTracked = Array.isArray(src.discordTrackedCodes) ? src.discordTrackedCodes : [];
+  const dstTracked = Array.isArray(dst.discordTrackedCodes) ? dst.discordTrackedCodes : [];
+  const seenCodes = new Set(dstTracked.map(x => x?.code).filter(Boolean));
+  for (const item of srcTracked) {
+    if (item?.code && !seenCodes.has(item.code)) {
+      dstTracked.push(item);
+      seenCodes.add(item.code);
+    }
+  }
+  dst.discordTrackedCodes = dstTracked;
+
+  for (const req of data.hostingRequests || []) {
+    if (req && req.userId === sourceId) req.userId = targetId;
+  }
+  for (const t of data.tickets || []) {
+    if (t && t.userId === sourceId) t.userId = targetId;
+  }
+  for (const c of data.claims || []) {
+    if (c && c.userId === sourceId) c.userId = targetId;
+  }
+  for (const ic of data.inviteClaims || []) {
+    if (ic && ic.referrerId === sourceId) ic.referrerId = targetId;
+  }
+
+  delete data.users[sourceId];
+  return true;
 }
 
 export function resolveDiscordCdnAvatar(discordId, avatarValue) {
@@ -155,6 +219,7 @@ export function buildInviteSummary({ userId, user, data, env = process.env }) {
   return {
     guildConfigured: cfg.guildConfigured,
     botConfigured: cfg.botConfigured,
+    rewardsApiConfigured: Boolean(env.REWARDS_API_URL && env.REWARDS_API_TOKEN),
     serverInviteUrl: cfg.serverInviteUrl,
     discordLinked,
     discordId,
@@ -168,6 +233,7 @@ export function buildInviteSummary({ userId, user, data, env = process.env }) {
     discordInviteUses,
     discordTrackedCodes: Array.isArray(user?.discordTrackedCodes) ? user.discordTrackedCodes : [],
     discordLastSyncedAt: user?.discordLastSyncedAt || null,
+    discordSyncError: user?.discordSyncError || null,
     verifiedInvites,
     pendingInvites,
     creditedMilestones,
@@ -279,18 +345,37 @@ export async function checkGuildMember({ guildId, botToken, discordId }, fetchIm
   }
 }
 
-export async function fetchGuildInviteSnapshot({ guildId, botToken, discordId, registeredCode }, fetchImpl = fetch) {
-  const [guildInvites, memberStatus] = await Promise.all([
-    discordBotRequest(`/guilds/${guildId}/invites`, { botToken }, fetchImpl),
-    checkGuildMember({ guildId, botToken, discordId }, fetchImpl).catch(() => null)
-  ]);
+export async function fetchGuildInviteSnapshot({ guildId, botToken, discordId, registeredCode, knownCodes = [] }, fetchImpl = fetch) {
+  let guildInvites;
+  try {
+    guildInvites = await discordBotRequest(`/guilds/${guildId}/invites`, { botToken }, fetchImpl);
+  } catch (err) {
+    if (err.status === 403) {
+      const permErr = new Error('Discord Bot lacks "Manage Server" permission on the Discord server, so live invite counts cannot be read automatically.');
+      permErr.status = 403;
+      throw permErr;
+    }
+    if (err.status === 401) {
+      const authErr = new Error('Server DISCORD_BOT_TOKEN is invalid or revoked.');
+      authErr.status = 401;
+      throw authErr;
+    }
+    throw err;
+  }
+
+  const memberStatus = await checkGuildMember({ guildId, botToken, discordId }, fetchImpl).catch(() => null);
+  const codeSet = new Set(
+    [registeredCode, ...(Array.isArray(knownCodes) ? knownCodes : [])]
+      .map(c => (typeof c === 'string' ? c.trim() : ''))
+      .filter(Boolean)
+  );
 
   const list = Array.isArray(guildInvites) ? guildInvites : [];
   const matched = list.filter(inv => {
     if (!inv || !inv.code) return false;
     const isInviter = discordId && inv.inviter?.id === discordId;
-    const isRegistered = registeredCode && inv.code === registeredCode;
-    return Boolean(isInviter || isRegistered);
+    const isKnownCode = codeSet.has(inv.code);
+    return Boolean(isInviter || isKnownCode);
   });
 
   const trackedInvites = matched.map(inv => ({

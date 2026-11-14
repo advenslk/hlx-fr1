@@ -24,23 +24,21 @@ export default function DiscordInviteHub({
   onUnlinkDiscord,
   onCreateDiscordInvite,
   onSyncDiscordInvites,
+  onSilentSyncInvites,
+  onRegisterDiscordInvite,
   onSubmitInviteClaim,
   onToast,
   onCardMouseMove,
   onCardMouseLeave
 }) {
+  const [registerCode, setRegisterCode] = useState(invite?.discordInviteUrl || invite?.discordInviteCode || '');
+  const [showRegisterForm, setShowRegisterForm] = useState(false);
   const [claimCode, setClaimCode] = useState(invite?.discordInviteCode || '');
   const [claimCount, setClaimCount] = useState('2');
   const [claimNote, setClaimNote] = useState('');
   const [showManualForm, setShowManualForm] = useState(false);
   const [confirmUnlink, setConfirmUnlink] = useState(false);
   const [showWebRef, setShowWebRef] = useState(false);
-
-  useEffect(() => {
-    if (invite?.discordInviteCode && !claimCode) {
-      setClaimCode(invite.discordInviteCode);
-    }
-  }, [invite?.discordInviteCode]);
 
   const tiers = invite?.inviteTiers || rewards?.inviteTiers || defaultInviteTiers;
   const discordLinked = Boolean(invite?.discordLinked ?? me?.discordLinked);
@@ -50,10 +48,48 @@ export default function DiscordInviteHub({
   const hzlEarned = Number(invite?.hzlEarnedFromInvites ?? 0);
   const nextTier = invite?.nextTier || null;
   const botConfigured = Boolean(invite?.botConfigured);
+  const rewardsApiConfigured = Boolean(invite?.rewardsApiConfigured);
+  const autoSyncActive = Boolean(botConfigured || rewardsApiConfigured);
+  const discordSyncError = invite?.discordSyncError || null;
   const serverInviteUrl = invite?.serverInviteUrl || null;
   const discordInviteUrl = invite?.discordInviteUrl || null;
   const trackedCodes = Array.isArray(invite?.discordTrackedCodes) ? invite.discordTrackedCodes : [];
   const recentClaims = Array.isArray(invite?.claims) ? invite.claims : [];
+
+  useEffect(() => {
+    if (invite?.discordInviteCode && !claimCode) {
+      setClaimCode(invite.discordInviteCode);
+    }
+    if (invite?.discordInviteUrl && !registerCode) {
+      setRegisterCode(invite.discordInviteUrl);
+    }
+  }, [invite?.discordInviteCode, invite?.discordInviteUrl]);
+
+  // Auto-sync live Discord server invites when tab is visible / window regains focus
+  useEffect(() => {
+    if (!discordLinked || !autoSyncActive || typeof onSilentSyncInvites !== 'function') {
+      return undefined;
+    }
+    onSilentSyncInvites();
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        onSilentSyncInvites();
+      }
+    }, 20000);
+
+    const handleFocus = () => {
+      if (document.visibilityState === 'visible') {
+        onSilentSyncInvites();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
+  }, [discordLinked, autoSyncActive]);
 
   const canUnlink = Boolean(
     discordLinked &&
@@ -67,6 +103,15 @@ export default function DiscordInviteHub({
       onToast(successMsg);
     } catch {
       onToast(val);
+    }
+  }
+
+  async function handleRegisterSubmit(e) {
+    e.preventDefault();
+    if (typeof onRegisterDiscordInvite !== 'function') return;
+    const ok = await onRegisterDiscordInvite(registerCode);
+    if (ok) {
+      setShowRegisterForm(false);
     }
   }
 
@@ -90,11 +135,11 @@ export default function DiscordInviteHub({
           <div className="section-label">DISCORD SERVER INVITE HUB</div>
           <h2 className="services-title">Invite Members to Discord & Earn HZL</h2>
           <p className="services-sub">
-            Link your Discord account, generate your personal Discord server invite link, and invite friends into our community. Every verified server join moves you closer to HZL milestone rewards.
+            Link your Discord account, use your personal Discord server invite link (or create one directly in our Discord server), and invite friends. Verified joins sync to your HZL milestone rewards.
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
           {serverInviteUrl && (
             <a
               className="btn-pill secondary sm"
@@ -105,7 +150,7 @@ export default function DiscordInviteHub({
               <DiscordGlyph size={14} /> Join Discord Server <ExternalLink size={12} />
             </a>
           )}
-          {discordLinked && botConfigured && (
+          {discordLinked && autoSyncActive && (
             <button
               className="btn-pill primary sm"
               onClick={onSyncDiscordInvites}
@@ -116,6 +161,25 @@ export default function DiscordInviteHub({
           )}
         </div>
       </div>
+
+      {/* Diagnostic / Setup Banner when Discord Bot permissions or token need attention */}
+      {discordLinked && discordSyncError && (
+        <div className="invite-diagnostic-banner error" role="alert">
+          <ShieldAlert size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+          <div>
+            <strong>Automatic Discord Invite Sync Error:</strong> {discordSyncError}
+          </div>
+        </div>
+      )}
+
+      {discordLinked && !autoSyncActive && (
+        <div className="invite-diagnostic-banner warn" role="status">
+          <ShieldAlert size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+          <div>
+            <strong>Live Discord Bot Sync Inactive:</strong> To automatically count invites created inside Discord, set <code>DISCORD_BOT_TOKEN</code> and <code>DISCORD_GUILD_ID</code> in the server <code>.env</code> (with <b>Manage Server</b> &amp; <b>Create Instant Invite</b> bot permissions). Until enabled, save your invite code and submit an invite verification claim below.
+          </div>
+        </div>
+      )}
 
       {/* STEP 1 & STEP 2: DISCORD ACCOUNT LINK + PERSONAL SERVER INVITE */}
       <div className="invite-hub-grid">
@@ -212,8 +276,8 @@ export default function DiscordInviteHub({
               <div className="invite-card-footer-actions">
                 <span className="invite-sync-meta">
                   {invite?.discordLastSyncedAt
-                    ? `Last synced: ${new Date(invite.discordLastSyncedAt).toLocaleString()}`
-                    : 'Ready to track Discord server invites'}
+                    ? `Last synced: ${new Date(invite.discordLastSyncedAt).toLocaleTimeString()}${autoSyncActive ? ' · Live sync active (20s)' : ''}`
+                    : (autoSyncActive ? 'Live sync active (auto-detecting your Discord invites)' : 'Ready for invite code registration')}
                 </span>
 
                 {canUnlink && !confirmUnlink && (
@@ -309,69 +373,112 @@ export default function DiscordInviteHub({
                   </div>
 
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {botConfigured && (
-                      <>
-                        <button
-                          type="button"
-                          className="btn-pill secondary sm"
-                          onClick={onSyncDiscordInvites}
-                          disabled={busy}
-                        >
-                          <RefreshCw size={12} /> Sync Server Uses
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-pill secondary sm"
-                          onClick={() => onCreateDiscordInvite(true)}
-                          disabled={busy}
-                        >
-                          <Sparkles size={12} /> Generate New Link
-                        </button>
-                      </>
+                    {autoSyncActive && (
+                      <button
+                        type="button"
+                        className="btn-pill secondary sm"
+                        onClick={onSyncDiscordInvites}
+                        disabled={busy}
+                      >
+                        <RefreshCw size={12} /> Sync Server Uses
+                      </button>
                     )}
+                    {botConfigured && (
+                      <button
+                        type="button"
+                        className="btn-pill secondary sm"
+                        onClick={() => onCreateDiscordInvite(true)}
+                        disabled={busy}
+                      >
+                        <Sparkles size={12} /> Generate New Link
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn-pill secondary sm"
+                      onClick={() => setShowRegisterForm(!showRegisterForm)}
+                    >
+                      <Link2 size={12} /> {showRegisterForm ? 'Hide Link Form' : 'Link Existing Invite'}
+                    </button>
                     <button
                       type="button"
                       className="btn-pill secondary sm"
                       onClick={() => setShowManualForm(!showManualForm)}
                     >
-                      <Send size={12} /> {showManualForm ? 'Hide Verification Form' : 'Submit Invite Verification'}
+                      <Send size={12} /> {showManualForm ? 'Hide Claim Form' : 'Submit Invite Verification'}
                     </button>
                   </div>
                 </>
               ) : botConfigured ? (
                 <div className="invite-connect-box">
                   <p className="invite-helper-text">
-                    Generate your permanent, unlimited-use Discord server invite link tied directly to your account.
+                    Generate your permanent Discord server invite link here — or if you already created an invite link inside Discord, any invite under your Discord account auto-syncs or can be linked below.
                   </p>
-                  <button
-                    type="button"
-                    className="btn-pill primary"
-                    onClick={() => onCreateDiscordInvite(false)}
-                    disabled={busy}
-                    style={{ alignSelf: 'flex-start' }}
-                  >
-                    <Sparkles size={14} /> Generate My Discord Server Invite
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="btn-pill primary sm"
+                      onClick={() => onCreateDiscordInvite(false)}
+                      disabled={busy}
+                    >
+                      <Sparkles size={13} /> Generate Server Invite
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-pill secondary sm"
+                      onClick={() => setShowRegisterForm(!showRegisterForm)}
+                    >
+                      <Link2 size={13} /> {showRegisterForm ? 'Hide Link Form' : 'I Already Created an Invite in Discord'}
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="invite-connect-box">
                   <p className="invite-helper-text">
-                    Create a personal <strong>Never Expire</strong> invite inside our Discord server (Right-click server → Invite People → Edit invite link → Never Expire &amp; No Max Uses), then register your invite link below to track and verify your invites!
+                    Create a <strong>Never Expire</strong> invite inside our Discord server (Server → Invite People → Edit invite link → Never Expire &amp; No Max Uses), then save your invite link below and submit your invite count for verification.
                   </p>
-                  {!showManualForm && (
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <button
                       type="button"
                       className="btn-pill primary sm"
-                      onClick={() => setShowManualForm(true)}
-                      style={{ alignSelf: 'flex-start' }}
+                      onClick={() => setShowRegisterForm(!showRegisterForm)}
                     >
-                      <Send size={13} /> Register My Discord Invite Code
+                      <Link2 size={13} /> Save My Discord Invite Link
                     </button>
-                  )}
+                    <button
+                      type="button"
+                      className="btn-pill secondary sm"
+                      onClick={() => setShowManualForm(!showManualForm)}
+                    >
+                      <Send size={13} /> Submit Invite Verification
+                    </button>
+                  </div>
                 </div>
               )}
 
-              {(showManualForm || (!botConfigured && !discordInviteUrl)) && (
+              {showRegisterForm && (
+                <form className="invite-claim-form" onSubmit={handleRegisterSubmit}>
+                  <div className="auth-input-group">
+                    <label htmlFor="discord-register-code">Paste Discord Invite Link You Created in Server</label>
+                    <div className="invite-url-row">
+                      <input
+                        id="discord-register-code"
+                        type="text"
+                        placeholder="https://discord.gg/yourcode"
+                        value={registerCode}
+                        onChange={e => setRegisterCode(e.target.value)}
+                        style={{ flex: 1, minWidth: '180px' }}
+                        required
+                      />
+                      <button type="submit" className="btn-pill primary sm" disabled={busy}>
+                        <Check size={13} /> Save &amp; Sync
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              )}
+
+              {(showManualForm || (!botConfigured && !discordInviteUrl && !showRegisterForm)) && (
                 <form className="invite-claim-form" onSubmit={handleClaimSubmit}>
                   <div className="invite-claim-grid">
                     <div className="auth-input-group">

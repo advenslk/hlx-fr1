@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { 
   Activity, ArrowRight, ArrowUpRight, Check, Copy, ExternalLink, 
-  Layers, LogOut, RefreshCw, Server, ShieldCheck, Users, 
+  Layers, LogOut, Menu, RefreshCw, Server, ShieldCheck, Users, 
   Wallet, Zap, Lock, Coins, Terminal, HardDrive, Cpu, X, ChevronRight,
   Shield, Globe, Sparkles, Eye, EyeOff, Box, RotateCcw, KeyRound, Mail, ShieldAlert
 } from 'lucide-react';
@@ -75,6 +75,7 @@ export default function App() {
   const [generatedRootPassword, setGeneratedRootPassword] = useState('');
   const [hostingRequests, setHostingRequests] = useState([]);
   const [activeTab, setActiveTab] = useState('deploy'); // 'deploy' | 'servers' | 'invites' | 'boosts' | 'security'
+  const [navDrawerOpen, setNavDrawerOpen] = useState(false);
   const [generatedPrivateKey, setGeneratedPrivateKey] = useState('');
   const [viewPublicMode, setViewPublicMode] = useState(false);
   const [use3DCanvas, setUse3DCanvas] = useState(true);
@@ -164,10 +165,17 @@ export default function App() {
 
     if (window.location.hash === '#security') {
       setActiveTab('security');
+    } else if (window.location.hash === '#invites') {
+      setActiveTab('invites');
+    } else if (window.location.hash === '#boosts') {
+      setActiveTab('boosts');
+    } else if (window.location.hash === '#servers') {
+      setActiveTab('servers');
     }
 
     const p = new URLSearchParams(window.location.search);
     const status = p.get('login');
+    const authErr = p.get('auth_error');
     if (status) {
       if (status === '2fa') {
         setAuthMode('login');
@@ -177,6 +185,9 @@ export default function App() {
         setAuthMode('login');
         setAuthStep('form');
         setAuthModalOpen(true);
+      } else if (status === 'discord_linked') {
+        setActiveTab('invites');
+        setToast('Discord account linked! Your Discord server invite tracking is now active.');
       } else {
         const messages = {
           success: 'Account connected successfully. Welcome to your HelzerX Cloud panel.',
@@ -184,9 +195,9 @@ export default function App() {
           failed: 'Login failed. Please verify credentials.',
           'join-discord': 'Please join the official Discord server to verify community status.'
         };
-        setToast(messages[status] || '');
+        setToast(authErr || messages[status] || '');
       }
-      window.history.replaceState({}, '', window.location.pathname);
+      window.history.replaceState({}, '', window.location.pathname + (window.location.hash || ''));
     }
 
     const handleOAuthMessage = (event) => {
@@ -203,6 +214,7 @@ export default function App() {
         setToast('Authenticated securely. Welcome to HelzerX Cloud!');
         loadData();
       } else if (msg.type === 'OAUTH_DISCORD_LINKED') {
+        setActiveTab('invites');
         setToast(msg.message || 'Discord account linked! Your Discord invite hub is ready.');
         loadData();
       } else if (msg.type === 'OAUTH_2FA_REQUIRED') {
@@ -220,7 +232,14 @@ export default function App() {
       }
     };
     window.addEventListener('message', handleOAuthMessage);
-    return () => window.removeEventListener('message', handleOAuthMessage);
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') setNavDrawerOpen(false);
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => {
+      window.removeEventListener('message', handleOAuthMessage);
+      window.removeEventListener('keydown', handleEsc);
+    };
   }, []);
 
   async function logout() {
@@ -249,6 +268,11 @@ export default function App() {
   async function handleLinkDiscord() {
     setBusy(true);
     try {
+      const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+      if (isMobile) {
+        window.location.href = '/api/auth/discord?mode=link';
+        return;
+      }
       const r = await fetch('/api/auth/discord/url?mode=link', { credentials: 'same-origin', cache: 'no-store' });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.url) {
@@ -333,6 +357,58 @@ export default function App() {
       setToast('Network error syncing Discord invites.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function registerDiscordInvite(inviteCode) {
+    setBusy(true);
+    try {
+      const r = await fetch('/api/invites/discord/register', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inviteCode })
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setToast(d.error || 'Could not register Discord invite link.');
+        return false;
+      }
+      setInvite(d);
+      setToast(d.message || 'Discord invite link saved & synced!');
+      await loadData();
+      return true;
+    } catch {
+      setToast('Network error saving Discord invite link.');
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function silentRefreshInvites() {
+    try {
+      const r = await fetch('/api/invites?force=1', { credentials: 'same-origin', cache: 'no-store' });
+      if (!r.ok) return;
+      const nextInv = await r.json();
+      setInvite(prev => {
+        const changed =
+          prev &&
+          (Number(prev.verifiedInvites || 0) !== Number(nextInv.verifiedInvites || 0) ||
+            Number(prev.hzlEarnedFromInvites || 0) !== Number(nextInv.hzlEarnedFromInvites || 0));
+        if (changed) {
+          fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' })
+            .then(mr => (mr.ok ? mr.json() : null))
+            .then(md => {
+              if (md?.user) setMe(md.user);
+              if (md?.rewards) setRewards(md.rewards);
+            })
+            .catch(() => {});
+        }
+        return nextInv;
+      });
+    } catch {
+      // Ignore silent background sync network errors
     }
   }
 
@@ -610,34 +686,36 @@ export default function App() {
     }
   }
 
-  // Mouse tilt helper for 3D cards & depth layers
+  // Mouse spotlight helper for cards (no 3D mouse-follow tilt)
   const handleCardMouseMove = (e) => {
     const card = e.currentTarget;
     const rect = card.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    const px = (x / rect.width) - 0.5;
-    const py = (y / rect.height) - 0.5;
-    const rx = (-py * 13).toFixed(2);
-    const ry = (px * 13).toFixed(2);
     card.style.setProperty('--mouse-x', `${x}px`);
     card.style.setProperty('--mouse-y', `${y}px`);
-    card.style.setProperty('--px', px.toFixed(3));
-    card.style.setProperty('--py', py.toFixed(3));
-    card.style.setProperty('--rx', `${rx}deg`);
-    card.style.setProperty('--ry', `${ry}deg`);
   };
 
-  const handleCardMouseLeave = (e) => {
-    const card = e.currentTarget;
-    card.style.setProperty('--px', '0');
-    card.style.setProperty('--py', '0');
-    card.style.setProperty('--rx', '0deg');
-    card.style.setProperty('--ry', '0deg');
-  };
+  const handleCardMouseLeave = () => {};
 
   // Display real enabled LXC and Minecraft plans from the backend
   const catalogPlans = hostingOptions.filter(plan => (plan.service === 'lxc' || plan.service === 'minecraft') && Number.isSafeInteger(Number(plan.cost)) && Number(plan.cost) > 0);
+
+  const tabLabels = {
+    deploy: 'Hosting Catalog',
+    servers: `My Containers & Servers (${hostingRequests.length})`,
+    invites: 'Invite & Referral Hub',
+    boosts: 'Boost Claim Submission',
+    security: 'Security & 2FA'
+  };
+
+  function selectConsoleTab(tab) {
+    setActiveTab(tab);
+    if (tab === 'security') {
+      loadSecurityInfo();
+    }
+    setNavDrawerOpen(false);
+  }
 
   return (
     <div className="app-container">
@@ -645,28 +723,43 @@ export default function App() {
 
       {/* Top Bar Contract (3 zones separated by gap) */}
       <header className="top-nav">
-        {/* Zone 1: Wordmark */}
-        <Brand />
+        {/* Zone 1: Three-Lines Drawer Trigger (when logged into console) + Wordmark */}
+        <div className="top-nav-left">
+          {me && !viewPublicMode && (
+            <button
+              type="button"
+              className="drawer-toggle-btn"
+              onClick={() => setNavDrawerOpen(true)}
+              aria-label="Open console menu"
+              aria-expanded={navDrawerOpen}
+              title="Open Console Navigation"
+            >
+              <Menu size={18} />
+            </button>
+          )}
+          <Brand />
+        </div>
 
-        {/* Zone 2: Navigation Links */}
+        {/* Zone 2: Navigation Links (public landing links only; member console uses the side drawer) */}
         <nav className="nav-links" aria-label="Main navigation">
-          {me && !viewPublicMode ? (
-            <>
-              <a href="#overview" onClick={() => setActiveTab('deploy')} className={activeTab === 'deploy' ? 'active' : ''}>Deploy</a>
-              <a href="#servers" onClick={() => setActiveTab('servers')} className={activeTab === 'servers' ? 'active' : ''}>My Servers ({hostingRequests.length})</a>
-              <a href="/control">Control Center ↗</a>
-              <a href="#invites" onClick={() => setActiveTab('invites')} className={activeTab === 'invites' ? 'active' : ''}>Invite Hub</a>
-              <a href="#boosts" onClick={() => setActiveTab('boosts')} className={activeTab === 'boosts' ? 'active' : ''}>Boost Rewards</a>
-              <a href="#security" onClick={() => setActiveTab('security')} className={activeTab === 'security' ? 'active' : ''}>Security</a>
-              <a href="#preview" onClick={() => setViewPublicMode(true)}>View Landing</a>
-            </>
-          ) : (
+          {(!me || viewPublicMode) ? (
             <>
               <a href="#about">About</a>
               <a href="#services">Services</a>
               <a href="#rewards">HZL Rewards</a>
               <a href="#infrastructure">Infrastructure</a>
             </>
+          ) : (
+            <button
+              type="button"
+              className="top-section-indicator"
+              onClick={() => setNavDrawerOpen(true)}
+              title="Switch section from side menu"
+            >
+              <Menu size={13} />
+              <span>{tabLabels[activeTab] || 'Console'}</span>
+              <ChevronRight size={13} style={{ opacity: 0.65 }} />
+            </button>
           )}
         </nav>
 
@@ -712,6 +805,132 @@ export default function App() {
         </div>
       </header>
 
+      {/* Slide-out Side Navigation Drawer */}
+      {me && !viewPublicMode && navDrawerOpen && (
+        <div className="side-drawer-overlay" onClick={() => setNavDrawerOpen(false)}>
+          <aside className="side-drawer" onClick={e => e.stopPropagation()} aria-label="Console Side Menu">
+            <div className="side-drawer-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Brand />
+                <span className="side-drawer-tag">CONSOLE</span>
+              </div>
+              <button
+                type="button"
+                className="side-drawer-close"
+                onClick={() => setNavDrawerOpen(false)}
+                aria-label="Close side menu"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="side-drawer-profile">
+              {me.avatar ? (
+                <img src={me.avatar} alt={me.username} className="side-drawer-avatar" referrerPolicy="no-referrer" />
+              ) : (
+                <span className="side-drawer-avatar-fallback">{me.username.slice(0, 1).toUpperCase()}</span>
+              )}
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div className="side-drawer-username">{me.global_name || me.username}</div>
+                <div className="side-drawer-balance">{money(rewards?.balance || 0)} HZL Available</div>
+              </div>
+            </div>
+
+            <div className="side-drawer-section-label">DASHBOARD SECTIONS</div>
+            <nav className="side-drawer-nav">
+              <button
+                type="button"
+                className={`side-drawer-item ${activeTab === 'deploy' ? 'active' : ''}`}
+                onClick={() => selectConsoleTab('deploy')}
+              >
+                <span className="side-drawer-item-icon"><Layers size={16} /></span>
+                <span className="side-drawer-item-text">Hosting Catalog</span>
+                <ChevronRight size={14} className="side-drawer-chevron" />
+              </button>
+
+              <button
+                type="button"
+                className={`side-drawer-item ${activeTab === 'servers' ? 'active' : ''}`}
+                onClick={() => selectConsoleTab('servers')}
+              >
+                <span className="side-drawer-item-icon"><Server size={16} /></span>
+                <span className="side-drawer-item-text">My Containers &amp; Servers</span>
+                <span className="side-drawer-count">{hostingRequests.length}</span>
+              </button>
+
+              <button
+                type="button"
+                className={`side-drawer-item ${activeTab === 'invites' ? 'active' : ''}`}
+                onClick={() => selectConsoleTab('invites')}
+              >
+                <span className="side-drawer-item-icon"><Users size={16} /></span>
+                <span className="side-drawer-item-text">Invite &amp; Referral Hub</span>
+                <ChevronRight size={14} className="side-drawer-chevron" />
+              </button>
+
+              <button
+                type="button"
+                className={`side-drawer-item ${activeTab === 'boosts' ? 'active' : ''}`}
+                onClick={() => selectConsoleTab('boosts')}
+              >
+                <span className="side-drawer-item-icon"><Zap size={16} /></span>
+                <span className="side-drawer-item-text">Boost Claim Submission</span>
+                <ChevronRight size={14} className="side-drawer-chevron" />
+              </button>
+
+              <button
+                type="button"
+                className={`side-drawer-item ${activeTab === 'security' ? 'active' : ''}`}
+                onClick={() => selectConsoleTab('security')}
+              >
+                <span className="side-drawer-item-icon"><ShieldCheck size={16} /></span>
+                <span className="side-drawer-item-text">Security &amp; 2FA</span>
+                {me.twoFactorEnabled && <span className="side-drawer-pill-ok">ON</span>}
+              </button>
+            </nav>
+
+            <div className="side-drawer-section-label" style={{ marginTop: '8px' }}>QUICK TOOLS</div>
+            <div className="side-drawer-nav">
+              <a className="side-drawer-item" href="/control" onClick={() => setNavDrawerOpen(false)}>
+                <span className="side-drawer-item-icon"><Terminal size={16} /></span>
+                <span className="side-drawer-item-text">Control Center</span>
+                <ArrowUpRight size={14} className="side-drawer-chevron" />
+              </a>
+
+              <button
+                type="button"
+                className="side-drawer-item"
+                onClick={() => { setViewPublicMode(true); setNavDrawerOpen(false); }}
+              >
+                <span className="side-drawer-item-icon"><Globe size={16} /></span>
+                <span className="side-drawer-item-text">View Public Landing</span>
+                <ChevronRight size={14} className="side-drawer-chevron" />
+              </button>
+            </div>
+
+            <div className="side-drawer-footer">
+              <button
+                type="button"
+                className="btn-pill secondary sm"
+                style={{ flex: 1 }}
+                onClick={async () => { await refreshAccount(); setNavDrawerOpen(false); }}
+              >
+                <RefreshCw size={13} /> Sync Ledger
+              </button>
+              <button
+                type="button"
+                className="btn-pill secondary sm"
+                style={{ borderColor: 'rgba(239,68,68,0.35)', color: '#fca5a5' }}
+                onClick={async () => { setNavDrawerOpen(false); await logout(); }}
+                disabled={busy}
+              >
+                <LogOut size={13} /> Sign Out
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+
       {/* Main Content Area */}
       {me && !viewPublicMode ? (
         /* ================= MEMBER DASHBOARD ================= */
@@ -719,10 +938,22 @@ export default function App() {
           <section className="dashboard-header" id="overview">
             <div className="dashboard-hero">
               <div className="dashboard-title-wrap">
+                <div className="dashboard-active-crumb">
+                  <button
+                    type="button"
+                    className="dashboard-menu-pill"
+                    onClick={() => setNavDrawerOpen(true)}
+                  >
+                    <Menu size={13} />
+                    <span>Menu</span>
+                  </button>
+                  <span className="dashboard-crumb-sep">/</span>
+                  <span className="dashboard-crumb-current">{tabLabels[activeTab] || 'Hosting Catalog'}</span>
+                </div>
                 <h1>Member Cloud Console</h1>
                 <p>Manage your verified HZL credits, deploy Minecraft and Proxmox LXC servers, and track infrastructure status.</p>
               </div>
-              <div style={{ display: 'flex', gap: '10px' }}>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 <button className="btn-pill secondary sm" onClick={refreshAccount}>
                   <RefreshCw size={12} /> Sync Ledger
                 </button>
@@ -730,40 +961,6 @@ export default function App() {
                   Deploy Server <ArrowRight size={12} />
                 </a>
               </div>
-            </div>
-
-            {/* Dashboard Navigation Tabs */}
-            <div className="dashboard-tabs">
-              <button 
-                className={`tab-btn ${activeTab === 'deploy' ? 'active' : ''}`}
-                onClick={() => setActiveTab('deploy')}
-              >
-                <Layers size={14} /> Hosting Catalog
-              </button>
-              <button 
-                className={`tab-btn ${activeTab === 'servers' ? 'active' : ''}`}
-                onClick={() => setActiveTab('servers')}
-              >
-                <Server size={14} /> My Containers & Servers ({hostingRequests.length})
-              </button>
-              <button 
-                className={`tab-btn ${activeTab === 'invites' ? 'active' : ''}`}
-                onClick={() => setActiveTab('invites')}
-              >
-                <Users size={14} /> Invite & Referral Hub
-              </button>
-              <button 
-                className={`tab-btn ${activeTab === 'boosts' ? 'active' : ''}`}
-                onClick={() => setActiveTab('boosts')}
-              >
-                <Zap size={14} /> Boost Claim Submission
-              </button>
-              <button 
-                className={`tab-btn ${activeTab === 'security' ? 'active' : ''}`}
-                onClick={() => { setActiveTab('security'); loadSecurityInfo(); }}
-              >
-                <ShieldCheck size={14} /> Security & 2FA
-              </button>
             </div>
           </section>
 
@@ -1037,6 +1234,8 @@ export default function App() {
               onUnlinkDiscord={handleUnlinkDiscord}
               onCreateDiscordInvite={createDiscordInvite}
               onSyncDiscordInvites={syncDiscordInvites}
+              onSilentSyncInvites={silentRefreshInvites}
+              onRegisterDiscordInvite={registerDiscordInvite}
               onSubmitInviteClaim={submitDiscordInviteClaim}
               onToast={setToast}
               onCardMouseMove={handleCardMouseMove}

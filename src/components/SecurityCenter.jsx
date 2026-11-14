@@ -243,19 +243,11 @@ export default function SecurityCenter({ me, securityInfo, onRefreshSecurity, on
     const rect = card.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    const px = (x / rect.width) - 0.5;
-    const py = (y / rect.height) - 0.5;
     card.style.setProperty('--mouse-x', `${x}px`);
     card.style.setProperty('--mouse-y', `${y}px`);
-    card.style.setProperty('--rx', `${(-py * 8).toFixed(2)}deg`);
-    card.style.setProperty('--ry', `${(px * 8).toFixed(2)}deg`);
   };
 
-  const handleSecCardLeave = (e) => {
-    const card = e.currentTarget;
-    card.style.setProperty('--rx', '0deg');
-    card.style.setProperty('--ry', '0deg');
-  };
+  const handleSecCardLeave = () => {};
 
   return (
     <section className="services-section" id="security">
