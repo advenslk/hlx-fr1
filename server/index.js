@@ -36,6 +36,26 @@ import {
   fetchGuildInviteSnapshot
 } from './discord-invites.js';
 import { startDiscordInviteWatcher } from './discord-bot.js';
+import {
+  BILLING_CYCLES,
+  DAY_MS,
+  GRACE_DAYS,
+  getUsdToLkrRate,
+  normalizePlanBilling,
+  getCyclePriceCents,
+  calculateCycleEndIso,
+  validatePromoCode,
+  calculateHzlDiscountCents,
+  getPaidUpgradeDeltaCents,
+  getBillingConfig,
+  ensureBillingCollections,
+  createInvoice,
+  recordTransaction,
+  verifyStripeWebhookSignature,
+  buildPayhereHash,
+  verifyPayhereNotifySignature,
+  runBillingLifecycleCycle
+} from './billing.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -45,7 +65,7 @@ fs.mkdirSync(path.join(root,'data'),{recursive:true});
 const required=['SESSION_SECRET','DISCORD_CLIENT_ID','DISCORD_CLIENT_SECRET','DISCORD_REDIRECT_URI'];
 const missing=required.filter(k=>!process.env[k]);if(prod&&missing.length)console.error('[startup] Missing environment variables:',missing.join(', '));
 if(prod&&(!process.env.SESSION_SECRET||process.env.SESSION_SECRET.length<32))throw new Error('SESSION_SECRET must be at least 32 characters in production.');
-app.disable('x-powered-by');app.set('trust proxy',1);app.use(express.json({limit:'20kb'}));
+app.disable('x-powered-by');app.set('trust proxy',1);app.use(express.json({limit:'20kb',verify:(req,_res,buf)=>{req.rawBody=buf;}}));app.use(express.urlencoded({extended:false,limit:'20kb'}));
 app.use((_req,res,next)=>{
   res.setHeader('X-Content-Type-Options','nosniff');
   res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');
@@ -125,7 +145,7 @@ function readData(){
         claims:Array.isArray(legacy?.claims)?legacy.claims:[],
         inviteClaims:Array.isArray(legacy?.inviteClaims)?legacy.inviteClaims:[],
         hostingRequests:Array.isArray(legacy?.hostingRequests)?legacy.hostingRequests:[],
-        tickets:[], plans:[], auditLogs:[]
+        tickets:[], plans:[], auditLogs:[], invoices:[], transactions:[], topupRequests:[], promoCodes:[]
       };
       writeState(migrated);
       return migrated;
@@ -140,38 +160,49 @@ function readData(){
     hostingRequests:stored.hostingRequests||[],
     tickets:stored.tickets||[],
     plans:Array.isArray(stored.plans)?stored.plans:[],
-    auditLogs:stored.auditLogs||[]
+    auditLogs:stored.auditLogs||[],
+    invoices:Array.isArray(stored.invoices)?stored.invoices:[],
+    transactions:Array.isArray(stored.transactions)?stored.transactions:[],
+    topupRequests:Array.isArray(stored.topupRequests)?stored.topupRequests:[],
+    promoCodes:Array.isArray(stored.promoCodes)?stored.promoCodes:[]
   };
   const defaultSystemPlans = [
-    { id: 'starter-lxc', service: 'lxc', name: 'Starter Cloud VPS', cost: 500, description: 'AMD EPYC™ compute container, 1 vCPU, 1024 MB RAM, 10 GB NVMe storage.', enabled: true, proxmox: { cores: 1, memory: 1024, disk: 10, swap: 512 } },
-    { id: 'pro-lxc', service: 'lxc', name: 'Pro Performance VPS', cost: 1000, description: 'High throughput cloud VPS, 2 vCPU, 2048 MB RAM, 25 GB NVMe storage.', enabled: true, proxmox: { cores: 2, memory: 2048, disk: 25, swap: 1024 } },
-    { id: 'ultra-lxc', service: 'lxc', name: 'Ultra Compute VPS', cost: 2000, description: 'Heavy workload VPS, 4 vCPU, 4096 MB RAM, 50 GB NVMe storage.', enabled: true, proxmox: { cores: 4, memory: 4096, disk: 50, swap: 2048 } },
-    { id: 'mc-starter', service: 'minecraft', name: 'Minecraft Paper Starter', cost: 400, description: 'Pterodactyl Paper 1.20 server with 2 GB RAM, 100% vCPU, 10 GB NVMe, and DDOS protection.', enabled: true, pterodactyl: { memory: 2048, cores: 1, disk: 10 } },
-    { id: 'mc-smp', service: 'minecraft', name: 'Minecraft SMP Community', cost: 800, description: 'Survival Multiplayer with Purpur/Paper performance patches, 4 GB RAM, and 200% vCPU.', enabled: true, pterodactyl: { memory: 4096, cores: 2, disk: 25 } },
-    { id: 'mc-modded', service: 'minecraft', name: 'Minecraft Forge / Fabric Modded', cost: 1500, description: 'High-memory container designed for heavy Fabric/Forge modpacks, 8 GB RAM, and 400% vCPU.', enabled: true, pterodactyl: { memory: 8192, cores: 4, disk: 50 } }
+    { id: 'starter-lxc', service: 'lxc', name: 'Starter Cloud VPS', cost: 500, billingMode: 'both', paidPricing: { monthlyCents: 299, quarterlyCents: 799, yearlyCents: 2899 }, description: 'AMD EPYC™ compute container, 1 vCPU, 1024 MB RAM, 10 GB NVMe storage.', enabled: true, proxmox: { cores: 1, memory: 1024, disk: 10, swap: 512 } },
+    { id: 'pro-lxc', service: 'lxc', name: 'Pro Performance VPS', cost: 1000, billingMode: 'both', paidPricing: { monthlyCents: 599, quarterlyCents: 1599, yearlyCents: 5799 }, description: 'High throughput cloud VPS, 2 vCPU, 2048 MB RAM, 25 GB NVMe storage.', enabled: true, proxmox: { cores: 2, memory: 2048, disk: 25, swap: 1024 } },
+    { id: 'ultra-lxc', service: 'lxc', name: 'Ultra Compute VPS', cost: 2000, billingMode: 'both', paidPricing: { monthlyCents: 1199, quarterlyCents: 3199, yearlyCents: 11499 }, description: 'Heavy workload VPS, 4 vCPU, 4096 MB RAM, 50 GB NVMe storage.', enabled: true, proxmox: { cores: 4, memory: 4096, disk: 50, swap: 2048 } },
+    { id: 'enterprise-lxc', service: 'lxc', name: 'Dedicated NVMe Pro VPS', cost: 4000, billingMode: 'paid', paidPricing: { monthlyCents: 1999, quarterlyCents: 5399, yearlyCents: 18999 }, description: 'Paid production tier: 6 vCPU, 8192 MB RAM, 100 GB NVMe RAID storage, automated backups & priority network.', enabled: true, proxmox: { cores: 6, memory: 8192, disk: 100, swap: 2048 } },
+    { id: 'mc-starter', service: 'minecraft', name: 'Minecraft Paper Starter', cost: 400, billingMode: 'both', paidPricing: { monthlyCents: 249, quarterlyCents: 679, yearlyCents: 2399 }, description: 'Pterodactyl Paper 1.20 server with 2 GB RAM, 100% vCPU, 10 GB NVMe, and DDOS protection.', enabled: true, pterodactyl: { memory: 2048, cores: 1, disk: 10 } },
+    { id: 'mc-smp', service: 'minecraft', name: 'Minecraft SMP Community', cost: 800, billingMode: 'both', paidPricing: { monthlyCents: 499, quarterlyCents: 1349, yearlyCents: 4799 }, description: 'Survival Multiplayer with Purpur/Paper performance patches, 4 GB RAM, and 200% vCPU.', enabled: true, pterodactyl: { memory: 4096, cores: 2, disk: 25 } },
+    { id: 'mc-modded', service: 'minecraft', name: 'Minecraft Forge / Fabric Modded', cost: 1500, billingMode: 'both', paidPricing: { monthlyCents: 899, quarterlyCents: 2429, yearlyCents: 8599 }, description: 'High-memory container designed for heavy Fabric/Forge modpacks, 8 GB RAM, and 400% vCPU.', enabled: true, pterodactyl: { memory: 8192, cores: 4, disk: 50 } },
+    { id: 'mc-network', service: 'minecraft', name: 'Minecraft Velocity Pro Network', cost: 3000, billingMode: 'paid', paidPricing: { monthlyCents: 1699, quarterlyCents: 4599, yearlyCents: 16299 }, description: 'Paid powerhouse tier: 12 GB DDR5 RAM, 600% dedicated vCPU, 80 GB NVMe & priority DDoS mitigation.', enabled: true, pterodactyl: { memory: 12288, cores: 6, disk: 80 } }
   ];
   if(!state.plans.length){
     if(Array.isArray(envPlans)&&envPlans.length){
-      state.plans=envPlans.filter(x=>x&&typeof x.id==='string'&&typeof x.service==='string').map(x=>({...x,enabled:x.enabled!==false}));
+      state.plans=envPlans.filter(x=>x&&typeof x.id==='string'&&typeof x.service==='string').map(x=>normalizePlanBilling({...x,enabled:x.enabled!==false}));
     } else {
       state.plans=defaultSystemPlans;
     }
     writeState(state);
+  } else {
+    state.plans=state.plans.map(normalizePlanBilling);
   }
+  ensureBillingCollections(state);
   return state;
 }
 let data=readData();
 function writeData(){writeState(data);}
 function ensureUser(id){
   if(!data.users[id]){
-    data.users[id]={balance:0,verifiedInvites:0,activeBoosts:0,referrer:null,pendingReferrer:null,creditedMilestones:[],sessionVersion:1,authProviders:[],twoFactorEnabled:false,securityEvents:[],createdAt:Date.now()};
+    data.users[id]={balance:0,cashBalanceCents:0,verifiedInvites:0,activeBoosts:0,referrer:null,pendingReferrer:null,creditedMilestones:[],sessionVersion:1,authProviders:[],twoFactorEnabled:false,securityEvents:[],createdAt:Date.now()};
   }
   const u=data.users[id];
+  if(!Number.isInteger(u.cashBalanceCents)||u.cashBalanceCents<0)u.cashBalanceCents=Number.isFinite(Number(u.cashBalanceCents))?Math.max(0,Math.round(Number(u.cashBalanceCents))):0;
   if(!Number.isInteger(u.sessionVersion)||u.sessionVersion<1)u.sessionVersion=1;
   if(!Array.isArray(u.authProviders))u.authProviders=[];
   if(!Array.isArray(u.securityEvents))u.securityEvents=[];
   if(!Array.isArray(data.inviteClaims))data.inviteClaims=[];
   if(!Array.isArray(data.hostingRequests))data.hostingRequests=[];
+  ensureBillingCollections(data);
   return u;
 }
 const inviteTiers=INVITE_TIERS;
@@ -229,7 +260,8 @@ function publicUser(u){
     discordUsername:discordId?(account?.discordUsername||(!/^usr_/.test(String(u.id||''))?u.username:null)||null):null,
     discordGlobalName:discordId?(account?.discordGlobalName||(!/^usr_/.test(String(u.id||''))?(u.global_name||u.username):null)||null):null,
     discordAvatar:discordId?resolveDiscordCdnAvatar(discordId,discordAvatarHash):null,
-    discordInGuild:Boolean(account?.discordInGuild)
+    discordInGuild:Boolean(account?.discordInGuild),
+    cashBalanceCents:Number(account?.cashBalanceCents||0)
   };
 }
 function buildSessionUser(account,id){
@@ -283,10 +315,11 @@ function oauthPopupResponse(res,{ok,type,message,redirectTo}){
   res.set('Cache-Control','no-store');
   res.type('html').send(`<!doctype html><html><body style="background:#09090d;color:#fff;font-family:sans-serif;display:grid;place-items:center;min-height:100vh;margin:0"><div style="text-align:center;padding:24px;max-width:420px"><p style="margin:0 0 16px;line-height:1.5">${safeMsg}</p><a href="${redirectTarget}" style="display:inline-block;padding:10px 18px;border-radius:999px;background:#fff;color:#09090d;font-weight:700;text-decoration:none;font-size:13px">Return to HelzerX</a><script>var target=${JSON.stringify(redirectTarget)};if(window.opener&&!window.opener.closed){try{window.opener.postMessage(${payload},'*');}catch(e){}setTimeout(function(){try{window.close();}catch(e){}setTimeout(function(){window.location.href=target;},900);},180);}else{window.location.href=target;}</script></div></body></html>`);
 }
-async function rewardsFor(user){const u=ensureUser(user.id);return {connected:true,balance:u.balance,verifiedInvites:u.verifiedInvites,activeBoosts:u.activeBoosts,rewards:[],message:null,inviteTiers,boostTiers,referralCode:user.id};}
+async function rewardsFor(user){const u=ensureUser(user.id);return {connected:true,balance:u.balance,cashBalanceCents:Number(u.cashBalanceCents||0),verifiedInvites:u.verifiedInvites,activeBoosts:u.activeBoosts,rewards:[],message:null,inviteTiers,boostTiers,referralCode:user.id};}
 app.get('/api/health',(req,r)=>{
   const g=resolveGoogleOAuthConfig(req);
-  r.json({ok:true,service:'helzerx-freehost',discordConfigured:Boolean(process.env.DISCORD_CLIENT_ID&&process.env.DISCORD_CLIENT_SECRET),googleConfigured:g.configured,emailAuthEnabled:true,rewardsConfigured:Boolean(process.env.REWARDS_API_URL&&process.env.REWARDS_API_TOKEN),proxmox:{enabled:proxmoxReadiness().enabled,ready:proxmoxReadiness().ready},pterodactyl:pterodactylReadiness()});
+  const b=getBillingConfig(process.env);
+  r.json({ok:true,service:'helzerx-freehost',discordConfigured:Boolean(process.env.DISCORD_CLIENT_ID&&process.env.DISCORD_CLIENT_SECRET),googleConfigured:g.configured,emailAuthEnabled:true,rewardsConfigured:Boolean(process.env.REWARDS_API_URL&&process.env.REWARDS_API_TOKEN),proxmox:{enabled:proxmoxReadiness().enabled,ready:proxmoxReadiness().ready},pterodactyl:pterodactylReadiness(),billing:{stripe:b.gateways.stripe.enabled,payhere:b.gateways.payhere.enabled}});
 });
 app.get('/api/auth/providers',(req,res)=>{
   const g=resolveGoogleOAuthConfig(req);
@@ -1239,15 +1272,15 @@ app.get('/api/hosting-templates',auth,async(req,res)=>{
 });
 
 app.get('/api/hosting-options',auth,async(_req,res)=>{
- const options=data.plans.filter(x=>x.enabled!==false);
+ const options=data.plans.filter(x=>x.enabled!==false).map(normalizePlanBilling);
  const readiness=proxmoxReadiness();
  const pteroReadiness=pterodactylReadiness();
  const mcEggs=await listMinecraftEggs();
  const mcNodes=await listMinecraftNodes();
  res.set('Cache-Control','no-store');
  res.json({
-  options:options.map(({id,service,name,cost,description,proxmox,pterodactyl})=>({
-   id,service,name,cost,description,
+  options:options.map(({id,service,name,cost,billingMode,paidPricing,description,proxmox,pterodactyl})=>({
+   id,service,name,cost,billingMode,paidPricing,description,
    ...(proxmox&&typeof proxmox==='object'?{resources:{cores:Number(proxmox.cores)||0,memory:Number(proxmox.memory)||0,disk:Number(proxmox.disk)||0}}:{}),
    ...(pterodactyl&&typeof pterodactyl==='object'?{pterodactyl:{memory:Number(pterodactyl.memory)||2048,cores:Number(pterodactyl.cores)||1,disk:Number(pterodactyl.disk)||10}}:{})
   })),
@@ -1256,7 +1289,8 @@ app.get('/api/hosting-options',auth,async(_req,res)=>{
   provisioning:{enabled:readiness.enabled,ready:readiness.ready},
   pterodactyl:{enabled:pteroReadiness.enabled,ready:pteroReadiness.ready,panelUrl:pteroReadiness.panelUrl,mode:pteroReadiness.mode},
   mcEggs,
-  mcNodes
+  mcNodes,
+  usdToLkrRate:getUsdToLkrRate(process.env)
  })});
 
 // User-owned LXC control APIs. Every lookup is scoped to the signed-in account.
@@ -1382,13 +1416,17 @@ app.get('/api/hosting-requests',auth,(req,res)=>{
  res.set('Cache-Control','no-store');
  res.json({
   requests:data.hostingRequests.filter(x=>x.userId===req.session.user.id).map(({
-   id,service,planName,cost,status,createdAt,updatedAt,vmid,hostname,
+   id,service,planId,planName,cost,status,createdAt,updatedAt,vmid,hostname,
    nodeId,osId,osLabel,displayName,provisioningStatus,error,
-   identifier,pterodactylId,serverIp,serverPort,nodeName,eggName,panelUrl
+   identifier,pterodactylId,serverIp,serverPort,nodeName,eggName,panelUrl,
+   billingType,billingCycle,recurringCents,paidUntil,graceUntil,autoRenew,billingStatus,suspendedReason,invoiceId
   })=>({
-   id,service,planName,cost,status,createdAt,updatedAt,vmid,hostname,
+   id,service,planId,planName,cost,status,createdAt,updatedAt,vmid,hostname,
    nodeId,osId,osLabel,displayName,provisioningStatus,error,
-   identifier,pterodactylId,serverIp,serverPort,nodeName,eggName,panelUrl
+   identifier,pterodactylId,serverIp,serverPort,nodeName,eggName,panelUrl,
+   billingType:billingType||'hzl',billingCycle:billingCycle||null,recurringCents:Number(recurringCents||0),
+   paidUntil:paidUntil||null,graceUntil:graceUntil||null,autoRenew:Boolean(autoRenew),
+   billingStatus:billingStatus||null,suspendedReason:suspendedReason||null,invoiceId:invoiceId||null
   }))
  });
 });
@@ -1529,6 +1567,536 @@ app.post('/api/hosting-requests',auth,adminMutationOrigin,async(req,res)=>{
   return res.status(502).json({error:request.vmid?'VPS provisioning needs a safety check. Your HZL is reserved and support must reconcile the Proxmox resource before retrying.':'VPS provisioning failed before a VMID was allocated; your HZL has been refunded.',request:{id:request.id,status:request.status,vmid:request.vmid??null}});
  }
 });
+
+// ================= PAID SYSTEM, WALLET, GATEWAYS, INVOICES & SUBSCRIPTIONS =================
+function resolveAppBaseUrl(req){
+  const envUrl=String(process.env.APP_URL||'').trim().replace(/\/+$/,'');
+  if(envUrl)return envUrl;
+  return `${req.protocol}://${req.get('host')}`;
+}
+
+app.get('/api/billing/summary',auth,(req,res)=>{
+  const userId=req.session.user.id;
+  const u=ensureUser(userId);
+  ensureBillingCollections(data);
+  const cfg=getBillingConfig(process.env);
+  const invoices=data.invoices.filter(x=>x.userId===userId).slice(0,100);
+  const transactions=data.transactions.filter(x=>x.userId===userId).slice(0,150);
+  const topupRequests=data.topupRequests.filter(x=>x.userId===userId).slice(0,50);
+  const paidServers=data.hostingRequests.filter(x=>x.userId===userId&&x.billingType==='paid'&&['provisioned','suspended'].includes(x.status));
+  const dueServersCount=paidServers.filter(x=>['due_soon','past_due','suspended_billing'].includes(x.billingStatus)).length;
+  res.set('Cache-Control','no-store');
+  res.json({
+    cashBalanceCents:Number(u.cashBalanceCents||0),
+    hzlBalance:Number(u.balance||0),
+    ...cfg,
+    invoices,
+    transactions,
+    topupRequests,
+    paidServersCount:paidServers.length,
+    dueServersCount,
+    totalPaidSpendCents:invoices.filter(x=>x.status==='paid'&&x.type!=='wallet_topup').reduce((n,x)=>n+Number(x.totalCents||0),0)
+  });
+});
+
+app.get('/api/billing/invoices/:id',auth,(req,res)=>{
+  ensureBillingCollections(data);
+  const inv=data.invoices.find(x=>x.id===req.params.id&&x.userId===req.session.user.id);
+  if(!inv)return res.status(404).json({error:'Invoice not found.'});
+  const u=ensureUser(req.session.user.id);
+  res.set('Cache-Control','no-store');
+  res.json({invoice:inv,customer:{id:req.session.user.id,name:u.global_name||u.username,email:u.email||null}});
+});
+
+app.post('/api/billing/promo/validate',auth,adminMutationOrigin,(req,res)=>{
+  const code=String(req.body?.code||'').trim();
+  const subtotalCents=Number(req.body?.subtotalCents||0);
+  const service=String(req.body?.service||'all');
+  if(!Number.isFinite(subtotalCents)||subtotalCents<=0)return res.status(400).json({error:'Valid subtotal is required.'});
+  const check=validatePromoCode({data,code,subtotalCents,service});
+  if(!check.valid)return res.status(400).json({error:check.error});
+  res.json({ok:true,...check});
+});
+
+app.post('/api/billing/topup/manual',auth,adminMutationOrigin,(req,res)=>{
+  const userId=req.session.user.id;
+  const u=ensureUser(userId);
+  ensureBillingCollections(data);
+  const method=String(req.body?.method||'');
+  if(!['bank_transfer','crypto'].includes(method))return res.status(400).json({error:'Method must be bank_transfer or crypto.'});
+  const amountUsd=Number(req.body?.amountUsd);
+  if(!Number.isFinite(amountUsd)||amountUsd<1||amountUsd>2500)return res.status(400).json({error:'Top-up amount must be between $1.00 and $2,500.00 USD.'});
+  const amountCents=Math.round(amountUsd*100);
+  const referenceCode=String(req.body?.referenceCode||'').trim();
+  const senderName=String(req.body?.senderName||'').trim();
+  const note=String(req.body?.note||'').trim();
+  if(referenceCode.length<3||referenceCode.length>120)return res.status(400).json({error:'Enter a valid bank reference / crypto TX ID (3–120 chars).'});
+  if(senderName.length<2||senderName.length>100)return res.status(400).json({error:'Enter the sender name or wallet label (2–100 chars).'});
+  const pendingCount=data.topupRequests.filter(x=>x.userId===userId&&x.status==='pending').length;
+  if(pendingCount>=5)return res.status(429).json({error:'You already have 5 pending top-up verifications waiting for review.'});
+
+  const rate=getUsdToLkrRate(process.env);
+  const invoice=createInvoice({
+    data,
+    userId,
+    username:u.username||req.session.user.username,
+    type:'wallet_topup',
+    items:[{description:`Wallet Credit Top-Up (${method==='bank_transfer'?'Sri Lanka Bank Transfer':'Crypto Payment'})`,amountCents}],
+    subtotalCents:amountCents,
+    totalCents:amountCents,
+    paymentMethod:method,
+    status:'pending',
+    note:`Ref: ${referenceCode} · Sender: ${senderName}`
+  });
+  const topup={
+    id:'top_'+crypto.randomBytes(8).toString('hex'),
+    userId,
+    username:u.username||req.session.user.username,
+    email:u.email||null,
+    method,
+    amountCents,
+    lkrEquivalent:Math.round((amountCents/100)*rate),
+    referenceCode,
+    senderName,
+    note:note.slice(0,300),
+    invoiceId:invoice.id,
+    status:'pending',
+    createdAt:new Date().toISOString()
+  };
+  data.topupRequests.unshift(topup);
+  data.auditLogs.unshift({id:crypto.randomUUID(),actorId:userId,actorName:u.username||'member',actorRole:'user',action:'user_topup_submitted',targetType:'topup_request',targetId:topup.id,details:{method,amountCents,referenceCode},createdAt:topup.createdAt});
+  if(data.auditLogs.length>5000)data.auditLogs.length=5000;
+  writeData();
+  res.status(201).json({ok:true,topup,invoice,message:'Deposit verification submitted! Our billing team will credit your wallet once verified.'});
+});
+
+app.post('/api/billing/topup/stripe',auth,adminMutationOrigin,async(req,res)=>{
+  const stripeKey=String(process.env.STRIPE_SECRET_KEY||'').trim();
+  if(!stripeKey)return res.status(503).json({error:'Stripe live gateway is not configured on the server yet (missing STRIPE_SECRET_KEY). Use Bank Transfer or Crypto top-up.'});
+  const amountUsd=Number(req.body?.amountUsd);
+  if(!Number.isFinite(amountUsd)||amountUsd<2||amountUsd>2500)return res.status(400).json({error:'Stripe top-up must be between $2.00 and $2,500.00 USD.'});
+  const amountCents=Math.round(amountUsd*100);
+  const userId=req.session.user.id;
+  const u=ensureUser(userId);
+  const baseUrl=resolveAppBaseUrl(req);
+  const invoice=createInvoice({
+    data,
+    userId,
+    username:u.username||req.session.user.username,
+    type:'wallet_topup',
+    items:[{description:'HelzerX Wallet Credit Top-Up (Stripe)',amountCents}],
+    subtotalCents:amountCents,
+    totalCents:amountCents,
+    paymentMethod:'stripe',
+    status:'pending'
+  });
+  try{
+    const form=new URLSearchParams({
+      mode:'payment',
+      'line_items[0][price_data][currency]':'usd',
+      'line_items[0][price_data][product_data][name]':'HelzerX Cloud Wallet Credit',
+      'line_items[0][price_data][unit_amount]':String(amountCents),
+      'line_items[0][quantity]':'1',
+      success_url:`${baseUrl}/?billing=stripe_success#billing`,
+      cancel_url:`${baseUrl}/?billing=stripe_cancelled#billing`,
+      client_reference_id:invoice.id,
+      ...(u.email?{customer_email:u.email}:{}),
+      'metadata[userId]':userId,
+      'metadata[invoiceId]':invoice.id,
+      'metadata[amountCents]':String(amountCents)
+    });
+    const sr=await fetch('https://api.stripe.com/v1/checkout/sessions',{
+      method:'POST',
+      headers:{Authorization:`Bearer ${stripeKey}`,'Content-Type':'application/x-www-form-urlencoded'},
+      body:form,
+      signal:AbortSignal.timeout(12000)
+    });
+    const sd=await sr.json();
+    if(!sr.ok||!sd.url)throw new Error(sd?.error?.message||'Stripe session creation failed');
+    invoice.gatewaySessionId=sd.id;
+    writeData();
+    res.json({ok:true,checkoutUrl:sd.url,sessionId:sd.id,invoiceId:invoice.id});
+  }catch(err){
+    invoice.status='void';
+    writeData();
+    res.status(502).json({error:String(err?.message||'Could not create Stripe Checkout session').slice(0,300)});
+  }
+});
+
+app.post('/api/billing/topup/payhere',auth,adminMutationOrigin,(req,res)=>{
+  const merchantId=String(process.env.PAYHERE_MERCHANT_ID||'').trim();
+  const merchantSecret=String(process.env.PAYHERE_MERCHANT_SECRET||'').trim();
+  if(!merchantId||!merchantSecret)return res.status(503).json({error:'PayHere LKR gateway is not configured on the server yet (missing PAYHERE_MERCHANT_ID / PAYHERE_MERCHANT_SECRET). Use Bank Transfer top-up.'});
+  const amountUsd=Number(req.body?.amountUsd);
+  if(!Number.isFinite(amountUsd)||amountUsd<1||amountUsd>2500)return res.status(400).json({error:'Top-up amount must be between $1.00 and $2,500.00 USD.'});
+  const amountCents=Math.round(amountUsd*100);
+  const rate=getUsdToLkrRate(process.env);
+  const amountLkr=Number(((amountCents/100)*rate).toFixed(2));
+  const amountFormatted=amountLkr.toFixed(2);
+  const userId=req.session.user.id;
+  const u=ensureUser(userId);
+  const baseUrl=resolveAppBaseUrl(req);
+  const invoice=createInvoice({
+    data,
+    userId,
+    username:u.username||req.session.user.username,
+    type:'wallet_topup',
+    items:[{description:`HelzerX Wallet Credit Top-Up (${amountLkr} LKR / $${amountUsd.toFixed(2)})`,amountCents}],
+    subtotalCents:amountCents,
+    totalCents:amountCents,
+    paymentMethod:'payhere',
+    status:'pending'
+  });
+  const hash=buildPayhereHash({merchantId,orderId:invoice.id,amountFormatted,currency:'LKR',merchantSecret});
+  const sandbox=String(process.env.PAYHERE_SANDBOX||'true').toLowerCase()!=='false';
+  writeData();
+  res.json({
+    ok:true,
+    actionUrl:sandbox?'https://sandbox.payhere.lk/pay/checkout':'https://www.payhere.lk/pay/checkout',
+    fields:{
+      merchant_id:merchantId,
+      return_url:`${baseUrl}/?billing=payhere_success#billing`,
+      cancel_url:`${baseUrl}/?billing=payhere_cancelled#billing`,
+      notify_url:`${baseUrl}/api/billing/webhooks/payhere`,
+      order_id:invoice.id,
+      items:`HelzerX Cloud Wallet Top-Up ($${amountUsd.toFixed(2)})`,
+      currency:'LKR',
+      amount:amountFormatted,
+      first_name:(u.global_name||u.username||'HelzerX').split(' ')[0].slice(0,40),
+      last_name:(u.global_name||u.username||'Member').split(' ').slice(1).join(' ').slice(0,40)||'User',
+      email:u.email||'billing@helzerx.cyou',
+      phone:'0770000000',
+      address:'Colombo',
+      city:'Colombo',
+      country:'Sri Lanka',
+      custom_1:userId,
+      custom_2:String(amountCents),
+      hash
+    }
+  });
+});
+
+app.post('/api/billing/webhooks/stripe',(req,res)=>{
+  const webhookSecret=String(process.env.STRIPE_WEBHOOK_SECRET||'').trim();
+  if(!webhookSecret)return res.status(503).send('Stripe webhook not configured');
+  const sig=req.get('stripe-signature');
+  if(!verifyStripeWebhookSignature({rawBody:req.rawBody,signatureHeader:sig,webhookSecret})){
+    return res.status(400).send('Invalid Stripe signature');
+  }
+  const event=req.body;
+  if(event?.type==='checkout.session.completed'){
+    const sessionObj=event.data?.object||{};
+    const invoiceId=sessionObj.metadata?.invoiceId||sessionObj.client_reference_id;
+    const userId=sessionObj.metadata?.userId;
+    const amountCents=Number(sessionObj.metadata?.amountCents||sessionObj.amount_total||0);
+    if(userId&&data.users[userId]&&amountCents>0){
+      const idempotencyKey='stripe:'+sessionObj.id;
+      const u=ensureUser(userId);
+      const txResult=recordTransaction({
+        data,userId,type:'wallet_topup',direction:'credit',amountCents,method:'stripe',
+        invoiceId:invoiceId||null,referenceId:sessionObj.id,idempotencyKey,
+        description:'Stripe Wallet Top-Up Completed'
+      });
+      if(!txResult.duplicate){
+        u.cashBalanceCents=Number(u.cashBalanceCents||0)+amountCents;
+        const inv=invoiceId?data.invoices.find(x=>x.id===invoiceId):null;
+        if(inv){inv.status='paid';inv.paidAt=new Date().toISOString();}
+        writeData();
+      }
+    }
+  }
+  res.json({received:true});
+});
+
+app.post('/api/billing/webhooks/payhere',(req,res)=>{
+  const merchantSecret=String(process.env.PAYHERE_MERCHANT_SECRET||'').trim();
+  if(!merchantSecret)return res.status(503).send('PayHere webhook not configured');
+  if(!verifyPayhereNotifySignature({body:req.body,merchantSecret})){
+    return res.status(400).send('Invalid PayHere signature');
+  }
+  if(String(req.body.status_code)==='2'){
+    const invoiceId=String(req.body.order_id||'');
+    const paymentId=String(req.body.payment_id||invoiceId);
+    const inv=data.invoices.find(x=>x.id===invoiceId);
+    if(inv&&inv.status!=='paid'&&data.users[inv.userId]){
+      const idempotencyKey='payhere:'+paymentId;
+      const u=ensureUser(inv.userId);
+      const txResult=recordTransaction({
+        data,userId:inv.userId,type:'wallet_topup',direction:'credit',amountCents:inv.totalCents,method:'payhere',
+        invoiceId:inv.id,referenceId:paymentId,idempotencyKey,
+        description:`PayHere LKR Wallet Top-Up (${req.body.payhere_amount} ${req.body.payhere_currency})`
+      });
+      if(!txResult.duplicate){
+        u.cashBalanceCents=Number(u.cashBalanceCents||0)+Number(inv.totalCents||0);
+        inv.status='paid';
+        inv.paidAt=new Date().toISOString();
+        writeData();
+      }
+    }
+  }
+  res.status(200).send('OK');
+});
+
+app.post('/api/billing/checkout',auth,adminMutationOrigin,async(req,res)=>{
+  const userId=req.session.user.id;
+  const u=ensureUser(userId);
+  ensureBillingCollections(data);
+
+  const service=String(req.body?.service||'');
+  const planId=String(req.body?.planId||'');
+  const billingCycle=BILLING_CYCLES[req.body?.billingCycle]?req.body.billingCycle:'monthly';
+  const promoInput=String(req.body?.promoCode||'').trim();
+  const useHzlCredit=Boolean(req.body?.useHzlCredit);
+  const autoRenew=req.body?.autoRenew!==false;
+
+  const rawOption=data.plans.find(x=>x.enabled!==false&&x.id===planId&&x.service===service&&typeof x.name==='string');
+  const option=rawOption?normalizePlanBilling(rawOption):null;
+  if(!option||option.billingMode==='hzl')return res.status(400).json({error:'This plan is not available for Paid Checkout.'});
+
+  const displayName=String(req.body?.displayName||'').trim().toLowerCase();
+  const nodeId=String(req.body?.nodeId||process.env.PROXMOX_NODE||'');
+  const osId=String(req.body?.osId||'default');
+  const rootPassword=String(req.body?.password||'');
+  const nodes=configuredVpsNodes(),osOptions=configuredVpsOs();
+  const selectedNode=nodes.find(x=>x.id===nodeId);
+  let selectedOs=osOptions.find(x=>x.id===osId);
+
+  if(service==='lxc'){
+    if(!/^[a-z0-9](?:[a-z0-9-]{0,28}[a-z0-9])?$/.test(displayName)||displayName.length<2)return res.status(400).json({error:'VPS name must be 2–30 lowercase letters, numbers or hyphens.'});
+    if(!selectedNode)return res.status(400).json({error:'Selected Proxmox node is not in the server allowlist.'});
+    let liveTemplates=[];
+    try{liveTemplates=await listLxcTemplates({node:nodeId});}catch{return res.status(503).json({error:'Unable to read OS templates from Proxmox. Check node and storage permissions.'});}
+    selectedOs=liveTemplates.find(x=>x.id===osId||x.template===osId);
+    if(!selectedOs)return res.status(400).json({error:'That OS template is no longer available on the selected Proxmox node.'});
+    if(rootPassword.length<10||rootPassword.length>128||/[\x00-\x1f\x7f]/.test(rootPassword))return res.status(400).json({error:'Root password must be 10–128 characters without control characters.'});
+    if(!option.proxmox||!Number.isInteger(Number(option.proxmox.cores))||Number(option.proxmox.cores)<1)return res.status(400).json({error:'This LXC plan is missing valid Proxmox resources.'});
+    const readiness=proxmoxReadiness();
+    if(!readiness.ready)return res.status(503).json({error:'Automatic Proxmox LXC provisioning is not ready yet.'});
+  } else if(service==='minecraft'){
+    if(!displayName||displayName.length<2||displayName.length>30||!/^[a-z0-9](?:[a-z0-9_-]{0,28}[a-z0-9])?$/i.test(displayName)){
+      return res.status(400).json({error:'Minecraft server name must be 2–30 letters, numbers, hyphens or underscores.'});
+    }
+  } else {
+    return res.status(400).json({error:'Unsupported service type for paid checkout.'});
+  }
+
+  if(data.hostingRequests.some(x=>x.userId===userId&&(['pending','provisioning'].includes(x.status)||(service==='lxc'&&x.status==='provisioning-error'&&Number.isInteger(Number(x.vmid)))))){
+    return res.status(409).json({error:'You already have a deployment in progress or awaiting reconciliation.'});
+  }
+
+  const subtotalCents=getCyclePriceCents(option,billingCycle);
+  let promoDiscountCents=0;
+  let appliedPromo=null;
+  if(promoInput){
+    const pCheck=validatePromoCode({data,code:promoInput,subtotalCents,service});
+    if(!pCheck.valid)return res.status(400).json({error:pCheck.error});
+    promoDiscountCents=pCheck.discountCents;
+    appliedPromo=pCheck.promo;
+  }
+  const afterPromo=Math.max(0,subtotalCents-promoDiscountCents);
+  const {hzlUsed,hzlDiscountCents}=calculateHzlDiscountCents({userHzlBalance:u.balance,useHzlCredit,remainingCents:afterPromo});
+  const totalCents=Math.max(0,afterPromo-hzlDiscountCents);
+
+  if(Number(u.cashBalanceCents||0)<totalCents){
+    return res.status(402).json({error:`Insufficient Wallet balance. Need $${(totalCents/100).toFixed(2)} USD (available: $${(Number(u.cashBalanceCents||0)/100).toFixed(2)}). Top up your wallet first.`});
+  }
+
+  const now=new Date().toISOString();
+  const paidUntil=calculateCycleEndIso(Date.now(),billingCycle);
+  const graceUntil=new Date(new Date(paidUntil).getTime()+GRACE_DAYS*DAY_MS).toISOString();
+
+  // Deduct wallet + HZL atomically before provisioning
+  u.cashBalanceCents=Number(u.cashBalanceCents||0)-totalCents;
+  if(hzlUsed>0)u.balance=Math.max(0,Number(u.balance||0)-hzlUsed);
+  if(appliedPromo){
+    const promoRecord=data.promoCodes.find(p=>p.id===appliedPromo.id);
+    if(promoRecord)promoRecord.usedCount=Number(promoRecord.usedCount||0)+1;
+  }
+
+  const requestId=crypto.randomUUID();
+  const invoice=createInvoice({
+    data,
+    userId,
+    username:req.session.user.username,
+    type:'hosting_order',
+    items:[{description:`${option.name} (${billingCycle} subscription)`,amountCents:subtotalCents}],
+    subtotalCents,
+    discountCents:promoDiscountCents,
+    hzlDiscountCents,
+    hzlUsed,
+    totalCents,
+    paymentMethod:'wallet',
+    status:'paid',
+    serverId:requestId,
+    promoCode:appliedPromo?.code||null
+  });
+  recordTransaction({
+    data,
+    userId,
+    type:'server_purchase',
+    direction:'debit',
+    amountCents:totalCents,
+    method:'wallet',
+    invoiceId:invoice.id,
+    referenceId:requestId,
+    description:`Paid Server Order: ${option.name} (${billingCycle})`
+  });
+
+  const request={
+    id:requestId,userId,username:req.session.user.username,service,
+    planId:option.id,planName:option.name,displayName:displayName||undefined,cost:0,
+    billingType:'paid',billingCycle,recurringCents:subtotalCents,paidUntil,graceUntil,autoRenew,
+    billingStatus:'active',invoiceId:invoice.id,
+    ...(service==='lxc'?{nodeId,osId,osLabel:selectedOs.label}:{}),
+    planSnapshot:{id:option.id,service:option.service,name:option.name,cost:option.cost,paidPricing:option.paidPricing,...(option.proxmox?{proxmox:{...option.proxmox}}:{}),...(option.pterodactyl?{pterodactyl:{...option.pterodactyl}}:{})},
+    status:'provisioning',provisioningAttempts:1,createdAt:now,updatedAt:now
+  };
+  data.hostingRequests.push(request);
+  data.auditLogs.unshift({id:crypto.randomUUID(),actorId:userId,actorName:req.session.user.username||'user',actorRole:'user',action:'user_paid_checkout_started',targetType:'hosting_request',targetId:request.id,details:{planId:option.id,billingCycle,totalCents,hzlUsed,promoCode:appliedPromo?.code||null,invoiceId:invoice.id},createdAt:now});
+  writeData();
+
+  if(service==='minecraft'){
+    const eggId=String(req.body?.eggId||'paper-1.20');
+    const mcNodeId=String(req.body?.nodeId||'hlx-mc-asia-01');
+    try{
+      const created=await provisionMinecraftServer({requestId:request.id,plan:option,user:req.session.user,serverName:displayName,eggId,nodeId:mcNodeId});
+      request.status='provisioned';request.provisioningStatus='server-running';
+      request.identifier=created.identifier;request.pterodactylId=created.id;
+      request.serverIp=created.ip;request.serverPort=created.port;
+      request.nodeName=created.node;request.eggName=created.egg;
+      request.panelUrl=created.panelUrl;request.hostname=created.name;
+      request.updatedAt=new Date().toISOString();
+      writeData();
+      return res.status(201).json({
+        ok:true,invoice,
+        request:{id:request.id,service:'minecraft',planName:request.planName,status:request.status,identifier:created.identifier,hostname:created.name,serverIp:created.ip,serverPort:created.port,panelUrl:created.panelUrl,billingType:'paid',billingCycle,paidUntil,autoRenew},
+        message:`Paid Minecraft server "${created.name}" deployed! Invoice ${invoice.invoiceNumber} ($${(totalCents/100).toFixed(2)}) settled.`
+      });
+    }catch(error){
+      request.updatedAt=new Date().toISOString();request.status='failed';request.provisioningStatus='failed-before-resource-allocation';
+      request.error=String(error?.message||'Minecraft server provisioning failed').slice(0,500);
+      u.cashBalanceCents+=totalCents;if(hzlUsed>0)u.balance+=hzlUsed;
+      invoice.status='refunded';
+      recordTransaction({data,userId,type:'refund',direction:'credit',amountCents:totalCents,method:'wallet',invoiceId:invoice.id,referenceId:request.id,description:'Auto-refund after failed Minecraft deployment'});
+      writeData();
+      return res.status(502).json({error:'Paid Minecraft provisioning failed. Your wallet balance has been refunded.',request:{id:request.id,status:request.status}});
+    }
+  }
+
+  try{
+    const created=await provisionLxc({requestId:request.id,plan:request.planSnapshot,username:request.username,node:nodeId,template:selectedOs.template,hostname:displayName,rootPassword});
+    request.status='provisioned';request.provisioningStatus='container-started';
+    request.vmid=created.vmid;request.hostname=created.hostname;request.proxmoxTask=created.upid;request.proxmoxStartTask=created.startTask;
+    request.nodeId=nodeId;request.osId=osId;request.updatedAt=new Date().toISOString();
+    writeData();
+    return res.status(201).json({
+      ok:true,invoice,
+      request:{id:request.id,service,planName:request.planName,status:request.status,vmid:request.vmid,hostname:request.hostname,nodeId,osId,billingType:'paid',billingCycle,paidUntil,autoRenew},
+      rootPassword,...(created.generatedSshPrivateKey?{generatedSshPrivateKey:created.generatedSshPrivateKey}:{}),
+      message:`Paid Cloud VPS deployed! Invoice ${invoice.invoiceNumber} ($${(totalCents/100).toFixed(2)}) settled.`
+    });
+  }catch(error){
+    request.updatedAt=new Date().toISOString();
+    request.error=String(error?.message||'Proxmox provisioning failed').slice(0,500);
+    if(Number.isInteger(Number(error?.vmid))&&Number(error.vmid)>0){
+      request.status='provisioning-error';request.provisioningStatus='needs-admin-reconciliation';request.vmid=Number(error.vmid);
+    }else{
+      request.status='failed';request.provisioningStatus='failed-before-resource-allocation';
+      u.cashBalanceCents+=totalCents;if(hzlUsed>0)u.balance+=hzlUsed;
+      invoice.status='refunded';
+      recordTransaction({data,userId,type:'refund',direction:'credit',amountCents:totalCents,method:'wallet',invoiceId:invoice.id,referenceId:request.id,description:'Auto-refund after failed VPS deployment'});
+    }
+    writeData();
+    return res.status(502).json({error:request.vmid?'VPS provisioning encountered a warning after VMID allocation. Support will reconcile it.':'Paid VPS provisioning failed before allocation; your wallet balance has been refunded.',request:{id:request.id,status:request.status}});
+  }
+});
+
+app.post('/api/billing/servers/:id/renew',auth,adminMutationOrigin,async(req,res)=>{
+  const userId=req.session.user.id;
+  const item=data.hostingRequests.find(x=>x.id===req.params.id&&x.userId===userId);
+  if(!item)return res.status(404).json({error:'Server not found.'});
+  if(item.billingType!=='paid')return res.status(400).json({error:'This server is a community HZL server and does not require cash renewal.'});
+  if(!['provisioned','suspended'].includes(item.status))return res.status(409).json({error:'This server cannot be renewed from its current status.'});
+
+  const cycle=BILLING_CYCLES[req.body?.billingCycle]?req.body.billingCycle:(item.billingCycle||'monthly');
+  const plan=normalizePlanBilling(data.plans.find(p=>p.id===item.planId)||item.planSnapshot||{cost:500});
+  const chargeCents=getCyclePriceCents(plan,cycle);
+  const u=ensureUser(userId);
+  if(Number(u.cashBalanceCents||0)<chargeCents){
+    return res.status(402).json({error:`Insufficient wallet balance ($${(chargeCents/100).toFixed(2)} USD required). Top up your wallet first.`});
+  }
+
+  u.cashBalanceCents=Number(u.cashBalanceCents||0)-chargeCents;
+  const baseDate=item.paidUntil&&new Date(item.paidUntil).getTime()>Date.now()?item.paidUntil:Date.now();
+  item.paidUntil=calculateCycleEndIso(baseDate,cycle);
+  item.graceUntil=new Date(new Date(item.paidUntil).getTime()+GRACE_DAYS*DAY_MS).toISOString();
+  item.billingCycle=cycle;
+  item.recurringCents=chargeCents;
+  item.billingStatus='active';
+  item.lastRenewedAt=new Date().toISOString();
+  item.updatedAt=item.lastRenewedAt;
+
+  const invoice=createInvoice({
+    data,userId,username:u.username||req.session.user.username,type:'server_renewal',
+    items:[{description:`Renewal: ${item.planName||item.service} (${cycle})`,amountCents:chargeCents}],
+    subtotalCents:chargeCents,totalCents:chargeCents,paymentMethod:'wallet',status:'paid',serverId:item.id
+  });
+  recordTransaction({data,userId,type:'server_renewal',direction:'debit',amountCents:chargeCents,method:'wallet',invoiceId:invoice.id,referenceId:item.id,description:`Renewed ${item.planName||item.service} (${cycle})`});
+
+  if(item.status==='suspended'&&item.suspendedReason==='billing_overdue'){
+    try{
+      if(item.service==='lxc'&&Number.isInteger(Number(item.vmid)))await manageLxc({vmid:item.vmid,action:'resume',node:item.nodeId});
+      else if(item.service==='minecraft'&&item.identifier)await manageMinecraftServer({identifier:item.identifier,action:'start'});
+      item.status='provisioned';item.provisioningStatus=item.service==='minecraft'?'server-running':'container-running';
+      delete item.suspendedReason;
+    }catch(err){console.error('[renew resume]',err?.message||err);}
+  }
+  writeData();
+  res.json({ok:true,invoice,request:item,message:`Server renewed until ${new Date(item.paidUntil).toLocaleDateString()} (${invoice.invoiceNumber}).`});
+});
+
+app.patch('/api/billing/servers/:id/auto-renew',auth,adminMutationOrigin,(req,res)=>{
+  const item=data.hostingRequests.find(x=>x.id===req.params.id&&x.userId===req.session.user.id);
+  if(!item)return res.status(404).json({error:'Server not found.'});
+  if(item.billingType!=='paid')return res.status(400).json({error:'Auto-renew applies only to paid subscriptions.'});
+  item.autoRenew=Boolean(req.body?.autoRenew);
+  item.updatedAt=new Date().toISOString();
+  writeData();
+  res.json({ok:true,autoRenew:item.autoRenew,message:`Auto-renew ${item.autoRenew?'enabled':'disabled'} for ${item.displayName||item.hostname||item.planName}.`});
+});
+
+app.post('/api/billing/servers/:id/upgrade',auth,adminMutationOrigin,(req,res)=>{
+  const userId=req.session.user.id;
+  const item=data.hostingRequests.find(x=>x.id===req.params.id&&x.userId===userId);
+  if(!item)return res.status(404).json({error:'Server not found.'});
+  if(item.billingType!=='paid'||!['provisioned','suspended'].includes(item.status))return res.status(400).json({error:'Only active paid servers can be upgraded.'});
+  const targetPlanRaw=data.plans.find(p=>p.id===String(req.body?.targetPlanId||'')&&p.service===item.service&&p.enabled!==false);
+  if(!targetPlanRaw)return res.status(404).json({error:'Target upgrade plan not found.'});
+  const targetPlan=normalizePlanBilling(targetPlanRaw);
+  const currentPlan=normalizePlanBilling(data.plans.find(p=>p.id===item.planId)||item.planSnapshot||{cost:500});
+  const delta=getPaidUpgradeDeltaCents({currentPlan,targetPlan,server:item});
+  if(!delta.allowed)return res.status(400).json({error:delta.error});
+  const u=ensureUser(userId);
+  if(Number(u.cashBalanceCents||0)<delta.upgradeDeltaCents){
+    return res.status(402).json({error:`Insufficient wallet balance ($${(delta.upgradeDeltaCents/100).toFixed(2)} USD needed for prorated upgrade).`});
+  }
+
+  u.cashBalanceCents=Number(u.cashBalanceCents||0)-delta.upgradeDeltaCents;
+  const invoice=createInvoice({
+    data,userId,username:u.username||req.session.user.username,type:'plan_upgrade',
+    items:[{description:`Prorated Plan Upgrade: ${item.planName} -> ${targetPlan.name}`,amountCents:delta.upgradeDeltaCents}],
+    subtotalCents:delta.upgradeDeltaCents,totalCents:delta.upgradeDeltaCents,paymentMethod:'wallet',status:'paid',serverId:item.id
+  });
+  recordTransaction({data,userId,type:'plan_upgrade',direction:'debit',amountCents:delta.upgradeDeltaCents,method:'wallet',invoiceId:invoice.id,referenceId:item.id,description:`Upgraded server ${item.id} to ${targetPlan.name}`});
+  item.planId=targetPlan.id;
+  item.planName=targetPlan.name;
+  item.recurringCents=delta.targetCyclePrice;
+  item.planSnapshot={id:targetPlan.id,service:targetPlan.service,name:targetPlan.name,cost:targetPlan.cost,paidPricing:targetPlan.paidPricing,...(targetPlan.proxmox?{proxmox:{...targetPlan.proxmox}}:{}),...(targetPlan.pterodactyl?{pterodactyl:{...targetPlan.pterodactyl}}:{})};
+  item.updatedAt=new Date().toISOString();
+  data.auditLogs.unshift({id:crypto.randomUUID(),actorId:userId,actorName:u.username||'member',actorRole:'user',action:'user_paid_server_upgraded',targetType:'hosting_request',targetId:item.id,details:{fromPlan:currentPlan.id,toPlan:targetPlan.id,deltaCents:delta.upgradeDeltaCents,invoiceId:invoice.id},createdAt:item.updatedAt});
+  writeData();
+  res.json({ok:true,invoice,request:item,message:`Upgraded to ${targetPlan.name} (${invoice.invoiceNumber}).`});
+});
 app.get('/api/boost-rewards',auth,(_req,res)=>res.json({tiers:boostTiers,verification:'Boost rewards are submitted as claims and must be reviewed. Discord OAuth alone cannot verify active server boosts without a privileged integration.'}));
 app.post('/api/boost-claims',auth,(req,res)=>{const count=Number(req.body?.boosts);if(![1,2,3,4,7,10].includes(count))return res.status(400).json({error:'Choose an eligible boost tier.'});const duplicate=data.claims.some(c=>c.userId===req.session.user.id&&c.status==='pending');if(duplicate)return res.status(409).json({error:'You already have a pending boost claim.'});const tier=boostTiers.find(x=>x[0]===count);data.claims.push({id:crypto.randomUUID(),userId:req.session.user.id,username:req.session.user.username,boosts:count,amount:tier[1],status:'pending',createdAt:new Date().toISOString()});writeData();res.status(201).json({ok:true,message:'Claim submitted for manual verification. HZL will only be credited after approval.'});});
 app.get('/api/boost-claims',auth,(req,res)=>res.json({claims:data.claims.filter(c=>c.userId===req.session.user.id).map(({id,boosts,amount,status,createdAt})=>({id,boosts,amount,status,createdAt}))}));
@@ -1608,7 +2176,7 @@ function auditAdmin(req,action,targetType,targetId,details={}) {
 }
 function safeAdminUser(id,u) {
   const discordId=getEffectiveDiscordId(id,u);
-  return {id,username:u.username||u.global_name||'Unknown',email:u.email||null,balance:Number(u.balance)||0,verifiedInvites:Number(u.verifiedInvites)||0,activeBoosts:Number(u.activeBoosts)||0,createdAt:u.createdAt||null,status:u.status==='suspended'?'suspended':'active',avatar:u.avatar||null,referrer:u.referrer||null,discordId,discordUsername:u.discordUsername||null,discordInGuild:Boolean(u.discordInGuild),discordInviteCode:u.discordInviteCode||null,discordInviteUses:Number(u.discordInviteUses||0)};
+  return {id,username:u.username||u.global_name||'Unknown',email:u.email||null,balance:Number(u.balance)||0,cashBalanceCents:Number(u.cashBalanceCents)||0,verifiedInvites:Number(u.verifiedInvites)||0,activeBoosts:Number(u.activeBoosts)||0,createdAt:u.createdAt||null,status:u.status==='suspended'?'suspended':'active',avatar:u.avatar||null,referrer:u.referrer||null,discordId,discordUsername:u.discordUsername||null,discordInGuild:Boolean(u.discordInGuild),discordInviteCode:u.discordInviteCode||null,discordInviteUses:Number(u.discordInviteUses||0)};
 }
 app.get('/api/tickets',auth,(req,res)=>{res.set('Cache-Control','no-store');res.json({tickets:data.tickets.filter(t=>t.userId===req.session.user.id).map(({messages=[],...t})=>({...t,messageCount:messages.length,lastMessageAt:messages.at(-1)?.createdAt||t.createdAt}))})});
 app.post('/api/tickets',auth,adminMutationOrigin,(req,res)=>{
@@ -1631,8 +2199,10 @@ app.post('/api/tickets/:id/messages',auth,adminMutationOrigin,(req,res)=>{
 app.get('/api/tickets/:id',auth,(req,res)=>{const ticket=data.tickets.find(t=>t.id===req.params.id&&t.userId===req.session.user.id);if(!ticket)return res.status(404).json({error:'Ticket not found.'});res.set('Cache-Control','no-store');res.json({ticket})});
 
 app.get('/api/admin/overview',adminOnly,(_req,res)=>{
+ ensureBillingCollections(data);
  const users=Object.values(data.users),requests=data.hostingRequests;
- res.json({stats:{users:users.length,activeUsers:users.filter(u=>u.status!=='suspended').length,suspendedUsers:users.filter(u=>u.status==='suspended').length,openTickets:data.tickets.filter(t=>t.status!=='closed').length,pendingHosting:requests.filter(x=>x.status==='pending').length,activeVps:requests.filter(x=>['provisioned','suspended'].includes(x.status)).length,totalHzl:users.reduce((n,u)=>n+(Number(u.balance)||0),0)},proxmox:proxmoxReadiness()});
+ const totalRevenueCents=data.invoices.filter(i=>i.status==='paid').reduce((n,i)=>n+Number(i.totalCents||0),0);
+ res.json({stats:{users:users.length,activeUsers:users.filter(u=>u.status!=='suspended').length,suspendedUsers:users.filter(u=>u.status==='suspended').length,openTickets:data.tickets.filter(t=>t.status!=='closed').length,pendingHosting:requests.filter(x=>x.status==='pending').length,activeVps:requests.filter(x=>['provisioned','suspended'].includes(x.status)).length,totalHzl:users.reduce((n,u)=>n+(Number(u.balance)||0),0),totalCashCents:users.reduce((n,u)=>n+(Number(u.cashBalanceCents)||0),0),paidServers:requests.filter(x=>x.billingType==='paid'&&['provisioned','suspended'].includes(x.status)).length,pendingTopups:data.topupRequests.filter(t=>t.status==='pending').length,totalRevenueCents},proxmox:proxmoxReadiness()});
 });
 app.get('/api/admin/users',adminOnly,(req,res)=>{
  const q=String(req.query.q||'').trim().toLowerCase(),status=String(req.query.status||'all');
@@ -1654,6 +2224,20 @@ app.post('/api/admin/users/:id/balance',adminOnly,adminMutationOrigin,(req,res)=
  auditAdmin(req,'balance_'+action,'user',req.params.id,{amount,before,after:user.balance,reason});writeData();
  res.json({ok:true,user:safeAdminUser(req.params.id,user)});
 });
+app.post('/api/admin/users/:id/wallet',adminOnly,adminMutationOrigin,(req,res)=>{
+ const user=data.users[req.params.id];if(!user)return res.status(404).json({error:'User not found.'});
+ ensureUser(req.params.id);ensureBillingCollections(data);
+ const action=String(req.body?.action||''),amountUsd=Number(req.body?.amountUsd),reason=String(req.body?.reason||'').trim();
+ if(!['add','remove'].includes(action)||!Number.isFinite(amountUsd)||amountUsd<=0||amountUsd>100000)return res.status(400).json({error:'Choose add/remove and a USD amount between $0.01 and $100,000.'});
+ if(reason.length<3||reason.length>300)return res.status(400).json({error:'Provide an audit reason (3–300 characters).'});
+ const amountCents=Math.round(amountUsd*100);
+ const before=Number(user.cashBalanceCents)||0;
+ if(action==='remove'&&before<amountCents)return res.status(409).json({error:'User wallet does not have enough USD credit to remove.'});
+ user.cashBalanceCents=action==='add'?before+amountCents:before-amountCents;
+ recordTransaction({data,userId:req.params.id,type:'admin_adjustment',direction:action==='add'?'credit':'debit',amountCents,method:'admin',description:`Admin adjustment: ${reason}`});
+ auditAdmin(req,'wallet_'+action,'user',req.params.id,{amountCents,before,after:user.cashBalanceCents,reason});writeData();
+ res.json({ok:true,user:safeAdminUser(req.params.id,user)});
+});
 app.post('/api/admin/users/:id/status',adminOnly,adminMutationOrigin,(req,res)=>{
  const user=data.users[req.params.id];if(!user)return res.status(404).json({error:'User not found.'});
  const status=String(req.body?.status||''),reason=String(req.body?.reason||'').trim();
@@ -1662,30 +2246,185 @@ app.post('/api/admin/users/:id/status',adminOnly,adminMutationOrigin,(req,res)=>
  user.status=status;user.statusReason=reason;user.statusUpdatedAt=new Date().toISOString();
  auditAdmin(req,'user_'+status,'user',req.params.id,{reason});writeData();res.json({ok:true,user:safeAdminUser(req.params.id,user)});
 });
-app.get('/api/admin/plans',adminOnly,(_req,res)=>res.json({plans:data.plans}));
+app.get('/api/admin/plans',adminOnly,(_req,res)=>res.json({plans:data.plans.map(normalizePlanBilling)}));
 app.post('/api/admin/plans',adminOnly,adminMutationOrigin,(req,res)=>{
- const {id,service,name,cost,description,enabled=true,proxmox:resources}=req.body||{};
+ const {id,service,name,cost,description,enabled=true,billingMode='both',paidPricing,proxmox:resources,pterodactyl:pteroResources}=req.body||{};
  if(typeof id!=='string'||!/^[a-z0-9][a-z0-9-]{1,30}$/i.test(id)||data.plans.some(p=>p.id===id))return res.status(400).json({error:'Plan ID must be unique and 2–31 letters, numbers or hyphens.'});
  if(!['lxc','minecraft','vps'].includes(service)||typeof name!=='string'||name.trim().length<2||name.trim().length>100||!Number.isSafeInteger(Number(cost))||Number(cost)<1||Number(cost)>100000000)return res.status(400).json({error:'Invalid plan service, name or HZL cost.'});
  if(description!==undefined&&(typeof description!=='string'||description.length>1000))return res.status(400).json({error:'Description must be at most 1000 characters.'});
- const plan={id,service,name:name.trim(),cost:Number(cost),description:String(description||''),enabled:Boolean(enabled)};
+ const cleanMode=['hzl','paid','both'].includes(billingMode)?billingMode:'both';
+ const plan={id,service,name:name.trim(),cost:Number(cost),billingMode:cleanMode,description:String(description||''),enabled:Boolean(enabled)};
+ if(paidPricing&&typeof paidPricing==='object'){
+   const m=Math.round(Number(paidPricing.monthlyCents||0));
+   const q=Math.round(Number(paidPricing.quarterlyCents||Math.round(m*3*0.9)));
+   const y=Math.round(Number(paidPricing.yearlyCents||Math.round(m*12*0.8)));
+   if(m>0)plan.paidPricing={monthlyCents:m,quarterlyCents:Math.max(m,q),yearlyCents:Math.max(m,y)};
+ }
  if(service==='lxc'){if(!resources)return res.status(400).json({error:'LXC plans require explicit Proxmox resources (cores, memory, disk and swap).'});const cores=Number(resources.cores),memory=Number(resources.memory),disk=Number(resources.disk),swap=Number(resources.swap??512);if(!Number.isInteger(cores)||cores<1||cores>64||!Number.isInteger(memory)||memory<256||memory>1048576||!Number.isInteger(disk)||disk<2||disk>10000||!Number.isInteger(swap)||swap<0||swap>1048576)return res.status(400).json({error:'Invalid LXC resource limits.'});plan.proxmox={cores,memory,disk,swap};}
- data.plans.push(plan);auditAdmin(req,'plan_create','plan',id,{service,cost:plan.cost});writeData();res.status(201).json({ok:true,plan});
+ if(service==='minecraft'&&pteroResources){plan.pterodactyl={memory:Math.max(512,Number(pteroResources.memory||2048)),cores:Math.max(1,Number(pteroResources.cores||1)),disk:Math.max(5,Number(pteroResources.disk||10))};}
+ const normalized=normalizePlanBilling(plan);
+ data.plans.push(normalized);auditAdmin(req,'plan_create','plan',id,{service,cost:normalized.cost,billingMode:normalized.billingMode});writeData();res.status(201).json({ok:true,plan:normalized});
 });
 app.put('/api/admin/plans/:id',adminOnly,adminMutationOrigin,(req,res)=>{
- const plan=data.plans.find(p=>p.id===req.params.id);if(!plan)return res.status(404).json({error:'Plan not found.'});
- const {name,cost,description,enabled,proxmox:resources}=req.body||{};
+ const idx=data.plans.findIndex(p=>p.id===req.params.id);if(idx<0)return res.status(404).json({error:'Plan not found.'});
+ const plan=data.plans[idx];
+ const {name,cost,description,enabled,billingMode,paidPricing,proxmox:resources}=req.body||{};
  if(name!==undefined&&(typeof name!=='string'||name.trim().length<2||name.trim().length>100))return res.status(400).json({error:'Invalid plan name.'});
  if(cost!==undefined&&(!Number.isSafeInteger(Number(cost))||Number(cost)<1||Number(cost)>100000000))return res.status(400).json({error:'Invalid HZL cost.'});
  if(description!==undefined&&(typeof description!=='string'||description.length>1000))return res.status(400).json({error:'Description must be at most 1000 characters.'});
  if(name!==undefined)plan.name=name.trim();if(cost!==undefined)plan.cost=Number(cost);if(description!==undefined)plan.description=description;if(enabled!==undefined)plan.enabled=Boolean(enabled);
+ if(billingMode!==undefined&&['hzl','paid','both'].includes(billingMode))plan.billingMode=billingMode;
+ if(paidPricing&&typeof paidPricing==='object'){
+   const m=Math.round(Number(paidPricing.monthlyCents||0));
+   const q=Math.round(Number(paidPricing.quarterlyCents||Math.round(m*3*0.9)));
+   const y=Math.round(Number(paidPricing.yearlyCents||Math.round(m*12*0.8)));
+   if(m>0)plan.paidPricing={monthlyCents:m,quarterlyCents:Math.max(m,q),yearlyCents:Math.max(m,y)};
+ }
  if(resources!==undefined){if(plan.service!=='lxc'||!resources||!Number.isInteger(Number(resources.cores))||Number(resources.cores)<1||!Number.isInteger(Number(resources.memory))||Number(resources.memory)<256||!Number.isInteger(Number(resources.disk))||Number(resources.disk)<2)return res.status(400).json({error:'Invalid LXC resource mapping.'});plan.proxmox={cores:Number(resources.cores),memory:Number(resources.memory),disk:Number(resources.disk),swap:Number(resources.swap??512)};}
- auditAdmin(req,'plan_update','plan',plan.id,{name:plan.name,cost:plan.cost,enabled:plan.enabled});writeData();res.json({ok:true,plan});
+ data.plans[idx]=normalizePlanBilling(plan);
+ auditAdmin(req,'plan_update','plan',plan.id,{name:plan.name,cost:plan.cost,enabled:plan.enabled,billingMode:data.plans[idx].billingMode});writeData();res.json({ok:true,plan:data.plans[idx]});
 });
 app.delete('/api/admin/plans/:id',adminOnly,adminMutationOrigin,(req,res)=>{
  const idx=data.plans.findIndex(p=>p.id===req.params.id);if(idx<0)return res.status(404).json({error:'Plan not found.'});
  if(data.hostingRequests.some(x=>x.planId===req.params.id&&['pending','provisioning','provisioned','suspended'].includes(x.status)))return res.status(409).json({error:'Plan is referenced by pending or active hosting requests. Disable it instead.'});
  const [plan]=data.plans.splice(idx,1);auditAdmin(req,'plan_delete','plan',plan.id,{name:plan.name});writeData();res.json({ok:true});
+});
+
+// ================= ADMIN FINANCE, TOP-UPS, PROMOS & INVOICES =================
+app.get('/api/admin/billing/overview',adminOnly,(_req,res)=>{
+  ensureBillingCollections(data);
+  const paidInvoices=data.invoices.filter(x=>x.status==='paid');
+  const totalRevenueCents=paidInvoices.reduce((n,x)=>n+Number(x.totalCents||0),0);
+  const activePaidServers=data.hostingRequests.filter(x=>x.billingType==='paid'&&['provisioned','suspended'].includes(x.status));
+  const mrrCents=activePaidServers.reduce((n,s)=>{
+    const rc=Number(s.recurringCents||0);
+    if(s.billingCycle==='yearly')return n+Math.round(rc/12);
+    if(s.billingCycle==='quarterly')return n+Math.round(rc/3);
+    return n+rc;
+  },0);
+  const overdueServers=activePaidServers.filter(s=>['past_due','suspended_billing'].includes(s.billingStatus)).length;
+  const walletLiabilityCents=Object.values(data.users).reduce((n,u)=>n+Number(u?.cashBalanceCents||0),0);
+  res.json({
+    stats:{
+      totalRevenueCents,
+      mrrCents,
+      walletLiabilityCents,
+      activePaidServers:activePaidServers.length,
+      overdueServers,
+      pendingTopups:data.topupRequests.filter(t=>t.status==='pending').length
+    },
+    topupRequests:data.topupRequests.slice(0,150),
+    invoices:data.invoices.slice(0,200),
+    promoCodes:data.promoCodes,
+    transactions:data.transactions.slice(0,150)
+  });
+});
+
+app.post('/api/admin/billing/topups/:id/review',adminOnly,adminMutationOrigin,(req,res)=>{
+  ensureBillingCollections(data);
+  const item=data.topupRequests.find(t=>t.id===req.params.id);
+  if(!item)return res.status(404).json({error:'Top-up verification not found.'});
+  if(item.status!=='pending')return res.status(409).json({error:'Top-up request has already been reviewed.'});
+  const action=String(req.body?.action||'');
+  if(!['approve','reject'].includes(action))return res.status(400).json({error:'Action must be approve or reject.'});
+  item.status=action==='approve'?'approved':'rejected';
+  item.reviewedAt=new Date().toISOString();
+  item.reviewedBy=req.session.admin.email;
+  const inv=item.invoiceId?data.invoices.find(i=>i.id===item.invoiceId):null;
+  if(action==='approve'){
+    const u=ensureUser(item.userId);
+    u.cashBalanceCents=Number(u.cashBalanceCents||0)+Number(item.amountCents||0);
+    if(inv){inv.status='paid';inv.paidAt=item.reviewedAt;}
+    recordTransaction({
+      data,userId:item.userId,type:'wallet_topup',direction:'credit',amountCents:item.amountCents,
+      method:item.method,invoiceId:item.invoiceId,referenceId:item.referenceCode,
+      idempotencyKey:'topup:'+item.id,description:`Approved ${item.method==='bank_transfer'?'Bank Transfer':'Crypto'} deposit (${item.referenceCode})`
+    });
+  }else if(inv){
+    inv.status='void';
+  }
+  auditAdmin(req,'topup_'+action,'topup_request',item.id,{userId:item.userId,amountCents:item.amountCents,method:item.method,referenceCode:item.referenceCode});
+  writeData();
+  res.json({ok:true,topup:item});
+});
+
+app.post('/api/admin/billing/invoices/:id/refund',adminOnly,adminMutationOrigin,(req,res)=>{
+  ensureBillingCollections(data);
+  const inv=data.invoices.find(i=>i.id===req.params.id);
+  if(!inv)return res.status(404).json({error:'Invoice not found.'});
+  if(inv.status!=='paid')return res.status(409).json({error:'Only paid invoices can be refunded.'});
+  const u=ensureUser(inv.userId);
+  const refundCents=Number(inv.totalCents||0);
+  if(refundCents>0){
+    u.cashBalanceCents=Number(u.cashBalanceCents||0)+refundCents;
+    recordTransaction({data,userId:inv.userId,type:'refund',direction:'credit',amountCents:refundCents,method:'wallet',invoiceId:inv.id,referenceId:inv.invoiceNumber,idempotencyKey:'refund:'+inv.id,description:`Admin refund for ${inv.invoiceNumber}`});
+  }
+  if(Number(inv.hzlUsed||0)>0){
+    u.balance=Number(u.balance||0)+Number(inv.hzlUsed||0);
+  }
+  inv.status='refunded';
+  inv.refundedAt=new Date().toISOString();
+  auditAdmin(req,'invoice_refund','invoice',inv.id,{invoiceNumber:inv.invoiceNumber,userId:inv.userId,refundCents});
+  writeData();
+  res.json({ok:true,invoice:inv});
+});
+
+app.post('/api/admin/billing/promos',adminOnly,adminMutationOrigin,(req,res)=>{
+  ensureBillingCollections(data);
+  const code=String(req.body?.code||'').trim().toUpperCase().replace(/[^A-Z0-9_-]/g,'');
+  const discountType=String(req.body?.discountType||'percent');
+  const rawVal=Number(req.body?.value||0);
+  const maxUses=Number(req.body?.maxUses||0);
+  const service=String(req.body?.service||'all');
+  const expiresAt=req.body?.expiresAt?String(req.body.expiresAt):null;
+  const description=String(req.body?.description||'').trim().slice(0,200);
+  if(code.length<3||code.length>24)return res.status(400).json({error:'Promo code must be 3–24 alphanumeric characters.'});
+  if(data.promoCodes.some(p=>p.code===code))return res.status(409).json({error:'Promo code already exists.'});
+  if(!['percent','fixed'].includes(discountType))return res.status(400).json({error:'Discount type must be percent or fixed.'});
+  if(discountType==='percent'&&(!Number.isFinite(rawVal)||rawVal<1||rawVal>95))return res.status(400).json({error:'Percent discount must be 1–95%.'});
+  if(discountType==='fixed'&&(!Number.isFinite(rawVal)||rawVal<50||rawVal>50000))return res.status(400).json({error:'Fixed discount must be 50–50,000 cents.'});
+  const promo={
+    id:'promo_'+crypto.randomBytes(6).toString('hex'),
+    code,discountType,value:Math.round(rawVal),
+    maxUses:Number.isInteger(maxUses)&&maxUses>0?maxUses:0,
+    usedCount:0,
+    service:['all','lxc','minecraft'].includes(service)?service:'all',
+    expiresAt:expiresAt&&!Number.isNaN(new Date(expiresAt).getTime())?new Date(expiresAt).toISOString():null,
+    description,
+    enabled:true,
+    createdAt:new Date().toISOString()
+  };
+  data.promoCodes.unshift(promo);
+  auditAdmin(req,'promo_create','promo',promo.id,{code,discountType,value:promo.value});
+  writeData();
+  res.status(201).json({ok:true,promo});
+});
+
+app.put('/api/admin/billing/promos/:id',adminOnly,adminMutationOrigin,(req,res)=>{
+  ensureBillingCollections(data);
+  const promo=data.promoCodes.find(p=>p.id===req.params.id);
+  if(!promo)return res.status(404).json({error:'Promo code not found.'});
+  if(req.body?.enabled!==undefined)promo.enabled=Boolean(req.body.enabled);
+  auditAdmin(req,'promo_toggle','promo',promo.id,{code:promo.code,enabled:promo.enabled});
+  writeData();
+  res.json({ok:true,promo});
+});
+
+app.delete('/api/admin/billing/promos/:id',adminOnly,adminMutationOrigin,(req,res)=>{
+  ensureBillingCollections(data);
+  const idx=data.promoCodes.findIndex(p=>p.id===req.params.id);
+  if(idx<0)return res.status(404).json({error:'Promo code not found.'});
+  const [removed]=data.promoCodes.splice(idx,1);
+  auditAdmin(req,'promo_delete','promo',removed.id,{code:removed.code});
+  writeData();
+  res.json({ok:true});
+});
+
+app.post('/api/admin/billing/run-cycle',adminOnly,adminMutationOrigin,async(req,res)=>{
+  const summary=await runBillingLifecycleCycle({data,writeData,manageLxc,manageMinecraftServer});
+  auditAdmin(req,'billing_cycle_manual','system','billing',summary);
+  writeData();
+  res.json({ok:true,summary});
 });
 app.get('/api/admin/tickets',adminOnly,(req,res)=>{
  const status=String(req.query.status||'open'),q=String(req.query.q||'').toLowerCase();
@@ -1823,5 +2562,9 @@ app.listen(PORT, '0.0.0.0', () => {
     if (watcher.active) {
       console.log('HelzerX Discord server invite watcher active.');
     }
+    setInterval(() => {
+      runBillingLifecycleCycle({ data, writeData, manageLxc, manageMinecraftServer })
+        .catch(err => console.error('[billing scheduler]', err?.message || err));
+    }, 5 * 60 * 1000);
   }
 });

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { 
-  Activity, ArrowRight, ArrowUpRight, Check, Copy, ExternalLink, 
-  Layers, LogOut, Menu, RefreshCw, Server, ShieldCheck, Users, 
+  Activity, ArrowRight, ArrowUpRight, Check, Copy, CreditCard, ExternalLink, 
+  FileText, Layers, LogOut, Menu, RefreshCw, Server, ShieldCheck, Users, 
   Wallet, Zap, Lock, Coins, Terminal, HardDrive, Cpu, X, ChevronRight,
   Shield, Globe, Sparkles, Eye, EyeOff, Box, RotateCcw, KeyRound, Mail, ShieldAlert
 } from 'lucide-react';
@@ -10,12 +10,28 @@ import VpsDeployModal from './components/VpsDeployModal.jsx';
 import MinecraftDeployModal from './components/MinecraftDeployModal.jsx';
 import SecurityCenter, { evaluatePasswordStrength } from './components/SecurityCenter.jsx';
 import DiscordInviteHub from './components/DiscordInviteHub.jsx';
+import BillingCenter from './components/BillingCenter.jsx';
+import LegalModal from './components/LegalModal.jsx';
 import serviceMinecraftBg from './assets/images/service_minecraft_bg_1794585441648.jpg';
 import serviceLxcBg from './assets/images/service_lxc_bg_1794585442080.jpg';
 import serviceLedgerBg from './assets/images/service_ledger_bg_1794585442923.jpg';
 import serviceInfraBg from './assets/images/service_infra_bg_1794585442788.jpg';
 
 const money = n => new Intl.NumberFormat('en-US').format(Number(n) || 0);
+const usd = cents => '$' + (Number(cents || 0) / 100).toFixed(2);
+const lkr = (cents, rate = 300) => 'Rs. ' + money(Math.round((Number(cents || 0) / 100) * Number(rate || 300)));
+function getPlanCyclePriceCents(plan, cycle = 'monthly') {
+  const baseHzl = Math.max(100, Number(plan?.cost || 500));
+  const rawMonthly = Math.max(199, Math.round((baseHzl / 500) * 299));
+  const fallbackMonthly = Math.floor(rawMonthly / 100) * 100 + 99;
+  const pp = plan?.paidPricing || {};
+  const m = Number(pp.monthlyCents) > 0 ? Number(pp.monthlyCents) : fallbackMonthly;
+  const q = Number(pp.quarterlyCents) > 0 ? Number(pp.quarterlyCents) : Math.round(m * 3 * 0.9);
+  const y = Number(pp.yearlyCents) > 0 ? Number(pp.yearlyCents) : Math.round(m * 12 * 0.8);
+  if (cycle === 'quarterly') return q;
+  if (cycle === 'yearly') return y;
+  return m;
+}
 const referralParam = new URLSearchParams(window.location.search).get('ref');
 const loginUrl = '/api/auth/discord' + (referralParam ? '?ref=' + encodeURIComponent(referralParam) : '');
 
@@ -72,13 +88,18 @@ export default function App() {
   const [mcEggs, setMcEggs] = useState([]);
   const [mcNodes, setMcNodes] = useState([]);
   const [catalogFilter, setCatalogFilter] = useState('all'); // 'all' | 'lxc' | 'minecraft'
+  const [catalogPaymentFilter, setCatalogPaymentFilter] = useState('all'); // 'all' | 'hzl' | 'paid'
+  const [catalogCycle, setCatalogCycle] = useState('monthly'); // 'monthly' | 'quarterly' | 'yearly'
+  const [deployCheckoutType, setDeployCheckoutType] = useState('hzl'); // 'hzl' | 'paid'
   const [generatedRootPassword, setGeneratedRootPassword] = useState('');
   const [hostingRequests, setHostingRequests] = useState([]);
-  const [activeTab, setActiveTab] = useState('deploy'); // 'deploy' | 'servers' | 'invites' | 'boosts' | 'security'
+  const [activeTab, setActiveTab] = useState('deploy'); // 'deploy' | 'servers' | 'billing' | 'invites' | 'boosts' | 'security'
   const [navDrawerOpen, setNavDrawerOpen] = useState(false);
   const [generatedPrivateKey, setGeneratedPrivateKey] = useState('');
   const [viewPublicMode, setViewPublicMode] = useState(false);
   const [use3DCanvas, setUse3DCanvas] = useState(true);
+  const [billing, setBilling] = useState(null);
+  const [legalDoc, setLegalDoc] = useState(null);
 
   // Split Auth Modal & Security State
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -109,6 +130,17 @@ export default function App() {
     }
   }
 
+  async function loadBillingData() {
+    try {
+      const r = await fetch('/api/billing/summary', { credentials: 'same-origin', cache: 'no-store' });
+      if (r.ok) {
+        setBilling(await r.json());
+      }
+    } catch {
+      // ignore transient error
+    }
+  }
+
   async function loadData() {
     setLoading(true);
     try {
@@ -117,6 +149,7 @@ export default function App() {
         setMe(null);
         setRewards(null);
         setSecurityInfo(null);
+        setBilling(null);
         return;
       }
       const d = await r.json();
@@ -124,11 +157,12 @@ export default function App() {
       setRewards(d.rewards);
 
       try {
-        const [ir, hr, rr, sr] = await Promise.all([
+        const [ir, hr, rr, sr, br] = await Promise.all([
           fetch('/api/invites', { credentials: 'same-origin', cache: 'no-store' }),
           fetch('/api/hosting-options', { credentials: 'same-origin', cache: 'no-store' }),
           fetch('/api/hosting-requests', { credentials: 'same-origin', cache: 'no-store' }),
-          fetch('/api/auth/security', { credentials: 'same-origin', cache: 'no-store' })
+          fetch('/api/auth/security', { credentials: 'same-origin', cache: 'no-store' }),
+          fetch('/api/billing/summary', { credentials: 'same-origin', cache: 'no-store' })
         ]);
         if (ir.ok) setInvite(await ir.json());
         if (hr.ok) {
@@ -145,6 +179,9 @@ export default function App() {
         }
         if (sr.ok) {
           setSecurityInfo(await sr.json());
+        }
+        if (br.ok) {
+          setBilling(await br.json());
         }
       } catch (err) {
         console.error('Error loading sub-resources:', err);
@@ -171,11 +208,24 @@ export default function App() {
       setActiveTab('boosts');
     } else if (window.location.hash === '#servers') {
       setActiveTab('servers');
+    } else if (window.location.hash === '#billing') {
+      setActiveTab('billing');
     }
 
     const p = new URLSearchParams(window.location.search);
     const status = p.get('login');
     const authErr = p.get('auth_error');
+    const billingStatus = p.get('billing');
+    if (billingStatus) {
+      setActiveTab('billing');
+      const billingMessages = {
+        stripe_success: 'Stripe payment received! Your wallet credit updates automatically via verified webhook.',
+        stripe_cancelled: 'Stripe checkout was cancelled.',
+        payhere_success: 'PayHere payment completed! Your wallet balance will reflect shortly.',
+        payhere_cancelled: 'PayHere payment was cancelled.'
+      };
+      if (billingMessages[billingStatus]) setToast(billingMessages[billingStatus]);
+    }
     if (status) {
       if (status === '2fa') {
         setAuthMode('login');
@@ -197,6 +247,8 @@ export default function App() {
         };
         setToast(authErr || messages[status] || '');
       }
+    }
+    if (status || billingStatus) {
       window.history.replaceState({}, '', window.location.pathname + (window.location.hash || ''));
     }
 
@@ -254,6 +306,7 @@ export default function App() {
       setMe(null);
       setRewards(null);
       setSecurityInfo(null);
+      setBilling(null);
       setToast('You have been signed out.');
     } finally {
       setBusy(false);
@@ -459,7 +512,169 @@ export default function App() {
     }
   }
 
-  function handleRequestClick(plan) {
+  // Paid Wallet & Subscription Handlers
+  async function submitManualTopup(payload) {
+    setBusy(true);
+    try {
+      const r = await fetch('/api/billing/topup/manual', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const d = await r.json().catch(() => ({}));
+      setToast(d.message || d.error || 'Deposit verification processed.');
+      if (r.ok) {
+        await loadData();
+        return true;
+      }
+      return false;
+    } catch {
+      setToast('Network error submitting deposit verification.');
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startStripeTopup(amountUsd) {
+    setBusy(true);
+    try {
+      const r = await fetch('/api/billing/topup/stripe', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amountUsd })
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.checkoutUrl) {
+        setToast(d.error || 'Could not start Stripe Checkout session.');
+        return;
+      }
+      window.location.href = d.checkoutUrl;
+    } catch {
+      setToast('Network error connecting to Stripe checkout.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startPayhereTopup(amountUsd) {
+    setBusy(true);
+    try {
+      const r = await fetch('/api/billing/topup/payhere', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amountUsd })
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.actionUrl || !d.fields) {
+        setToast(d.error || 'Could not initialize PayHere checkout.');
+        return;
+      }
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = d.actionUrl;
+      Object.entries(d.fields).forEach(([key, val]) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = key;
+        input.value = String(val ?? '');
+        form.appendChild(input);
+      });
+      document.body.appendChild(form);
+      form.submit();
+    } catch {
+      setToast('Network error starting PayHere payment.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function validatePromoForModal({ code, subtotalCents, service }) {
+    const r = await fetch('/api/billing/promo/validate', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, subtotalCents, service })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return { valid: false, error: d.error || 'Invalid promo code.' };
+    return d;
+  }
+
+  async function renewPaidServer(serverId, billingCycle = 'monthly') {
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/billing/servers/${encodeURIComponent(serverId)}/renew`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ billingCycle })
+      });
+      const d = await r.json().catch(() => ({}));
+      setToast(d.message || d.error || 'Server renewal updated.');
+      if (r.ok) await loadData();
+    } catch {
+      setToast('Could not renew paid server right now.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleServerAutoRenew(serverId, autoRenew) {
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/billing/servers/${encodeURIComponent(serverId)}/auto-renew`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoRenew: Boolean(autoRenew) })
+      });
+      const d = await r.json().catch(() => ({}));
+      setToast(d.message || d.error || 'Auto-renew preference updated.');
+      if (r.ok) await loadData();
+    } catch {
+      setToast('Could not update auto-renew setting.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function upgradePaidServer(serverId, targetPlanId) {
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/billing/servers/${encodeURIComponent(serverId)}/upgrade`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetPlanId })
+      });
+      const d = await r.json().catch(() => ({}));
+      setToast(d.message || d.error || 'Plan upgrade processed.');
+      if (r.ok) {
+        await loadData();
+        return true;
+      }
+      return false;
+    } catch {
+      setToast('Could not upgrade server plan right now.');
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleRequestClick(plan, preferredMode = null) {
+    const mode = preferredMode || (
+      plan.billingMode === 'paid'
+        ? 'paid'
+        : plan.billingMode === 'hzl'
+        ? 'hzl'
+        : (catalogPaymentFilter === 'paid' ? 'paid' : 'hzl')
+    );
+    setDeployCheckoutType(mode);
     if (plan.service === 'minecraft') {
       setMcModalPlan(plan);
     } else {
@@ -480,7 +695,9 @@ export default function App() {
   async function executeHostingRequest(plan, config = {}) {
     setBusy(true);
     try {
-      const payload = plan.service === 'minecraft'
+      const isPaid = config.checkoutType === 'paid';
+      const endpoint = isPaid ? '/api/billing/checkout' : '/api/hosting-requests';
+      const basePayload = plan.service === 'minecraft'
         ? {
             service: 'minecraft',
             planId: plan.id,
@@ -497,7 +714,17 @@ export default function App() {
             password: config.password
           };
 
-      const r = await fetch('/api/hosting-requests', {
+      const payload = isPaid
+        ? {
+            ...basePayload,
+            billingCycle: config.billingCycle || 'monthly',
+            promoCode: config.promoCode || '',
+            useHzlCredit: Boolean(config.useHzlCredit),
+            autoRenew: config.autoRenew !== false
+          }
+        : basePayload;
+
+      const r = await fetch(endpoint, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
@@ -517,6 +744,8 @@ export default function App() {
         setMcModalPlan(null);
         await loadData();
         setActiveTab('servers');
+      } else if (r.status === 402) {
+        // Keep modal closed cleanly or redirect if needed; error toast informs user
       } else {
         setVpsModalPlan(null);
         setMcModalPlan(null);
@@ -704,6 +933,7 @@ export default function App() {
   const tabLabels = {
     deploy: 'Hosting Catalog',
     servers: `My Containers & Servers (${hostingRequests.length})`,
+    billing: 'Billing & Wallet',
     invites: 'Invite & Referral Hub',
     boosts: 'Boost Claim Submission',
     security: 'Security & 2FA'
@@ -713,9 +943,14 @@ export default function App() {
     setActiveTab(tab);
     if (tab === 'security') {
       loadSecurityInfo();
+    } else if (tab === 'billing') {
+      loadBillingData();
     }
     setNavDrawerOpen(false);
   }
+
+  const walletCents = Number(billing?.cashBalanceCents ?? rewards?.cashBalanceCents ?? 0);
+  const usdToLkrRate = Number(billing?.usdToLkrRate || rewards?.usdToLkrRate || 300);
 
   return (
     <div className="app-container">
@@ -777,7 +1012,7 @@ export default function App() {
                   {me.global_name || me.username}
                   {me.twoFactorEnabled && <ShieldCheck size={12} color="#4ade80" title="2FA Protected" />}
                 </span>
-                <span className="user-badge">{money(rewards?.balance || 0)} HZL</span>
+                <span className="user-badge">{money(rewards?.balance || 0)} HZL · {usd(walletCents)}</span>
               </div>
               <button className="btn-icon" onClick={refreshAccount} title="Refresh balance" aria-label="Refresh balance">
                 <RefreshCw size={13} />
@@ -832,7 +1067,7 @@ export default function App() {
               )}
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="side-drawer-username">{me.global_name || me.username}</div>
-                <div className="side-drawer-balance">{money(rewards?.balance || 0)} HZL Available</div>
+                <div className="side-drawer-balance">{money(rewards?.balance || 0)} HZL · {usd(walletCents)}</div>
               </div>
             </div>
 
@@ -856,6 +1091,16 @@ export default function App() {
                 <span className="side-drawer-item-icon"><Server size={16} /></span>
                 <span className="side-drawer-item-text">My Containers &amp; Servers</span>
                 <span className="side-drawer-count">{hostingRequests.length}</span>
+              </button>
+
+              <button
+                type="button"
+                className={`side-drawer-item ${activeTab === 'billing' ? 'active' : ''}`}
+                onClick={() => selectConsoleTab('billing')}
+              >
+                <span className="side-drawer-item-icon"><Wallet size={16} /></span>
+                <span className="side-drawer-item-text">Billing &amp; Wallet</span>
+                <span className="side-drawer-count" style={{ color: '#86efac' }}>{usd(walletCents)}</span>
               </button>
 
               <button
@@ -968,11 +1213,20 @@ export default function App() {
           <section className="stats-grid" aria-label="Account Overview Stats">
             <div className="stat-box highlight" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
               <div className="stat-box-label">
-                <span>Available Balance</span>
+                <span>Balances (HZL &amp; USD)</span>
                 <Coins size={14} color="var(--accent-gold)" />
               </div>
-              <div className="stat-box-num">{money(rewards?.balance || 0)} <small style={{ fontSize: '15px', color: 'var(--accent-gold)' }}>HZL</small></div>
-              <div className="stat-box-sub">{rewards?.connected ? 'Attributed on official ledger' : 'Ready for redemption'}</div>
+              <div className="stat-box-num">{money(rewards?.balance || 0)} <small style={{ fontSize: '14px', color: 'var(--accent-gold)' }}>HZL</small></div>
+              <div className="stat-box-sub" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+                <span>Wallet: <strong style={{ color: '#86efac' }}>{usd(walletCents)}</strong> ({lkr(walletCents, usdToLkrRate)})</span>
+                <button
+                  type="button"
+                  onClick={() => selectConsoleTab('billing')}
+                  style={{ background: 'none', border: 'none', color: 'var(--accent-gold)', cursor: 'pointer', fontSize: '11px', fontWeight: 700 }}
+                >
+                  Top Up →
+                </button>
+              </div>
             </div>
 
             <div className="stat-box" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
@@ -1010,12 +1264,13 @@ export default function App() {
             <section className="services-section" id="deploy">
               <div className="services-head">
                 <div>
-                  <div className="section-label">HZL CLOUD REDEMPTION</div>
+                  <div className="section-label">HZL &amp; PAID CLOUD DEPLOYMENT</div>
                   <h2 className="services-title">Deploy Cloud VPS & Minecraft</h2>
-                  <p className="services-sub">Choose a Proxmox LXC container or Pterodactyl Minecraft server and deploy directly using your earned HZL balance. Your balance is checked before provisioning and deducted automatically upon server activation.</p>
+                  <p className="services-sub">Deploy Proxmox LXC containers or Pterodactyl Minecraft servers using earned community HZL credits or instant USD / LKR Paid Wallet subscriptions.</p>
                   
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', marginTop: '16px' }}>
-                    <span className="stat-box-sub">Your balance: <strong style={{ color: 'var(--accent-gold)' }}>{money(rewards?.balance || 0)} HZL</strong></span>
+                    <span className="stat-box-sub">HZL Balance: <strong style={{ color: 'var(--accent-gold)' }}>{money(rewards?.balance || 0)} HZL</strong></span>
+                    <span className="stat-box-sub">Cash Wallet: <strong style={{ color: '#86efac' }}>{usd(walletCents)}</strong> ({lkr(walletCents, usdToLkrRate)})</span>
                     <span className="stat-box-sub" role="status" style={{ color: hostingProvisioning.ready ? '#43d17a' : '#e6b45c' }}>
                       {hostingProvisioning.ready ? 'Automatic VPS engine: Online' : 'Proxmox VPS: Standby'}
                     </span>
@@ -1025,7 +1280,7 @@ export default function App() {
                   </div>
 
                   {/* Filter Tabs */}
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '20px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
                     <button
                       className={`btn-pill ${catalogFilter === 'all' ? 'primary' : 'secondary'} sm`}
                       onClick={() => setCatalogFilter('all')}
@@ -1044,82 +1299,165 @@ export default function App() {
                     >
                       <Box size={13} /> Minecraft SMP ({catalogPlans.filter(p => p.service === 'minecraft').length})
                     </button>
-                  </div>
-                </div>
-              </div>
 
-              {catalogPlans.filter(p => catalogFilter === 'all' || p.service === catalogFilter).length === 0 ? (
-                <div className="table-panel" style={{ padding: '32px 24px', marginTop: '18px' }}>
-                  <div style={{ textAlign: 'center', maxWidth: '620px', margin: '0 auto' }}>
-                    <Server size={32} style={{ margin: '0 auto 12px', opacity: 0.55 }} />
-                    <h3 style={{ color: '#fff', marginBottom: '8px' }}>No hosting plans matching filter</h3>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '13px', lineHeight: 1.7 }}>
-                      Switch filter to view available Cloud VPS containers or Minecraft game servers.
-                    </p>
-                    <button className="btn-pill secondary sm" style={{ marginTop: '14px' }} onClick={() => setCatalogFilter('all')}>
-                      View All Plans
+                    <span className="catalog-filter-divider" />
+
+                    <button
+                      className={`btn-pill ${catalogPaymentFilter === 'all' ? 'primary' : 'secondary'} sm`}
+                      onClick={() => setCatalogPaymentFilter('all')}
+                    >
+                      All Billing
                     </button>
+                    <button
+                      className={`btn-pill ${catalogPaymentFilter === 'hzl' ? 'primary' : 'secondary'} sm`}
+                      onClick={() => setCatalogPaymentFilter('hzl')}
+                    >
+                      <Coins size={12} /> Free / HZL
+                    </button>
+                    <button
+                      className={`btn-pill ${catalogPaymentFilter === 'paid' ? 'primary' : 'secondary'} sm`}
+                      onClick={() => setCatalogPaymentFilter('paid')}
+                    >
+                      <CreditCard size={12} /> Paid Hosting ($)
+                    </button>
+
+                    {catalogPaymentFilter !== 'hzl' && (
+                      <div className="catalog-cycle-switcher" role="group" aria-label="Paid billing cycle">
+                        {[
+                          { id: 'monthly', label: 'Monthly' },
+                          { id: 'quarterly', label: 'Quarterly -10%' },
+                          { id: 'yearly', label: 'Yearly -20%' }
+                        ].map(c => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            className={`catalog-cycle-btn ${catalogCycle === c.id ? 'active' : ''}`}
+                            onClick={() => setCatalogCycle(c.id)}
+                          >
+                            {c.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
-              ) : (
-              <div className="catalog-grid">
-                {catalogPlans
-                  .filter(p => catalogFilter === 'all' || p.service === catalogFilter)
-                  .map(plan => {
-                    const isMc = plan.service === 'minecraft';
-                    const canAfford = Number(rewards?.balance || 0) >= Number(plan.cost);
-                    const canDeploy = isMc
-                      ? (canAfford && !busy)
-                      : (hostingProvisioning.ready && canAfford && !busy);
-
-                    return (
-                      <article className="plan-card" key={plan.id} onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave} style={isMc ? { borderColor: 'rgba(168, 85, 247, 0.25)' } : {}}>
-                        <div className="plan-top">
-                          <span className="plan-service-tag" style={isMc ? { color: '#c084fc', borderColor: 'rgba(168, 85, 247, 0.3)' } : {}}>
-                            {isMc ? 'MINECRAFT · PTERODACTYL' : 'PROXMOX LINUX CONTAINER'}
-                          </span>
-                          <h3 className="plan-title">{plan.name}</h3>
-                          <p className="plan-desc">{plan.description}</p>
-                          
-                          {isMc ? (
-                            <ul className="plan-features">
-                              <li><Check size={13} /> {money(plan.pterodactyl?.memory || 2048)} MB Isolated Game RAM</li>
-                              <li><Check size={13} /> {plan.pterodactyl?.cores || 1} vCPU Dedicated Core & NVMe</li>
-                              <li><Check size={13} /> Paper, Purpur, Fabric & Bedrock supported</li>
-                              <li><Check size={13} /> Pterodactyl console & instant power controls</li>
-                            </ul>
-                          ) : (
-                            <ul className="plan-features">
-                              <li><Check size={13} /> Dedicated CPU, isolated RAM and NVMe storage</li>
-                              <li><Check size={13} /> Root SSH credentials generated automatically</li>
-                              <li><Check size={13} /> Low-latency datacenter network fabric</li>
-                            </ul>
-                          )}
-                        </div>
-
-                        <div className="plan-bottom">
-                          <div className="plan-cost">
-                            <span>Cost</span>
-                            <b>{money(plan.cost)} <small style={{ fontSize: '12px', color: isMc ? '#c084fc' : 'var(--accent-gold)' }}>HZL</small></b>
-                          </div>
-                          <button 
-                            className="btn-pill primary sm"
-                            disabled={!canDeploy}
-                            onClick={() => handleRequestClick(plan)}
-                            style={{ 
-                              opacity: canDeploy ? 1 : 0.55,
-                              ...(isMc ? { background: 'linear-gradient(135deg, #a855f7 0%, #7e22ce 100%)', borderColor: '#c084fc' } : {})
-                            }}
-                            title={!isMc && !hostingProvisioning.ready ? 'Automatic VPS provisioning is not configured yet' : !canAfford ? 'You need more HZL to deploy this plan' : `Deploy this ${isMc ? 'Minecraft Server' : 'VPS'} using HZL`}
-                          >
-                            {!isMc && !hostingProvisioning.ready ? 'Unavailable' : !canAfford ? 'Need More HZL' : (isMc ? 'Deploy Minecraft' : 'Deploy VPS')} <ArrowRight size={12} />
-                          </button>
-                        </div>
-                      </article>
-                    );
-                  })}
               </div>
-              )}
+
+              {(() => {
+                const visiblePlans = catalogPlans.filter(p => {
+                  if (catalogFilter !== 'all' && p.service !== catalogFilter) return false;
+                  if (catalogPaymentFilter === 'hzl' && p.billingMode === 'paid') return false;
+                  if (catalogPaymentFilter === 'paid' && p.billingMode === 'hzl') return false;
+                  return true;
+                });
+                if (visiblePlans.length === 0) {
+                  return (
+                    <div className="table-panel" style={{ padding: '32px 24px', marginTop: '18px' }}>
+                      <div style={{ textAlign: 'center', maxWidth: '620px', margin: '0 auto' }}>
+                        <Server size={32} style={{ margin: '0 auto 12px', opacity: 0.55 }} />
+                        <h3 style={{ color: '#fff', marginBottom: '8px' }}>No hosting plans matching filter</h3>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '13px', lineHeight: 1.7 }}>
+                          Switch category or billing filters to view available Cloud VPS containers or Minecraft game servers.
+                        </p>
+                        <button className="btn-pill secondary sm" style={{ marginTop: '14px' }} onClick={() => { setCatalogFilter('all'); setCatalogPaymentFilter('all'); }}>
+                          View All Plans
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="catalog-grid">
+                    {visiblePlans.map(plan => {
+                      const isMc = plan.service === 'minecraft';
+                      const supportsHzl = plan.billingMode !== 'paid';
+                      const supportsPaid = plan.billingMode !== 'hzl';
+                      const cyclePriceCents = getPlanCyclePriceCents(plan, catalogCycle);
+                      const canAffordHzl = Number(rewards?.balance || 0) >= Number(plan.cost);
+                      const canAffordPaid = walletCents >= cyclePriceCents;
+                      const engineReady = isMc || hostingProvisioning.ready;
+
+                      return (
+                        <article className="plan-card" key={plan.id} onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave} style={isMc ? { borderColor: 'rgba(168, 85, 247, 0.25)' } : {}}>
+                          <div className="plan-top">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                              <span className="plan-service-tag" style={isMc ? { color: '#c084fc', borderColor: 'rgba(168, 85, 247, 0.3)' } : {}}>
+                                {isMc ? 'MINECRAFT · PTERODACTYL' : 'PROXMOX LINUX CONTAINER'}
+                              </span>
+                              {plan.billingMode === 'paid' && (
+                                <span className="plan-paid-badge">PRO PAID TIER</span>
+                              )}
+                            </div>
+                            <h3 className="plan-title">{plan.name}</h3>
+                            <p className="plan-desc">{plan.description}</p>
+                            
+                            {isMc ? (
+                              <ul className="plan-features">
+                                <li><Check size={13} /> {money(plan.pterodactyl?.memory || 2048)} MB Isolated Game RAM</li>
+                                <li><Check size={13} /> {plan.pterodactyl?.cores || 1} vCPU Dedicated Core & NVMe</li>
+                                <li><Check size={13} /> Paper, Purpur, Fabric & Bedrock supported</li>
+                                <li><Check size={13} /> Pterodactyl console & instant power controls</li>
+                              </ul>
+                            ) : (
+                              <ul className="plan-features">
+                                <li><Check size={13} /> {(plan.proxmox?.cores || 1)} vCPU · {plan.proxmox?.memory ? `${Math.round(plan.proxmox.memory / 102.4) / 10} GB RAM` : 'Dedicated RAM'} · {plan.proxmox?.disk || 10} GB NVMe</li>
+                                <li><Check size={13} /> Root SSH credentials generated automatically</li>
+                                <li><Check size={13} /> Low-latency datacenter network fabric</li>
+                              </ul>
+                            )}
+                          </div>
+
+                          <div className="plan-bottom" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '14px' }}>
+                            <div className="plan-dual-pricing">
+                              {supportsHzl && (
+                                <div className="plan-cost">
+                                  <span>Community Credit</span>
+                                  <b>{money(plan.cost)} <small style={{ fontSize: '12px', color: isMc ? '#c084fc' : 'var(--accent-gold)' }}>HZL</small></b>
+                                </div>
+                              )}
+                              {supportsPaid && (
+                                <div className="plan-cost" style={supportsHzl ? { textAlign: 'right' } : {}}>
+                                  <span>Paid ({catalogCycle})</span>
+                                  <b>{usd(cyclePriceCents)} <small style={{ fontSize: '11px', color: '#86efac', fontWeight: 600 }}>{lkr(cyclePriceCents, usdToLkrRate)}</small></b>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="plan-action-row">
+                              {supportsHzl && (
+                                <button
+                                  className="btn-pill secondary sm"
+                                  disabled={!engineReady || !canAffordHzl || busy}
+                                  onClick={() => handleRequestClick(plan, 'hzl')}
+                                  style={{ flex: 1, opacity: engineReady && canAffordHzl ? 1 : 0.55 }}
+                                  title={!engineReady ? 'Automatic VPS provisioning is not configured yet' : !canAffordHzl ? 'Need more HZL' : 'Deploy using HZL'}
+                                >
+                                  {!engineReady ? 'Standby' : !canAffordHzl ? 'Need HZL' : 'Deploy HZL'}
+                                </button>
+                              )}
+                              {supportsPaid && (
+                                <button
+                                  className="btn-pill primary sm"
+                                  disabled={!engineReady || busy}
+                                  onClick={() => handleRequestClick(plan, 'paid')}
+                                  style={{
+                                    flex: 1,
+                                    opacity: engineReady ? 1 : 0.55,
+                                    ...(isMc ? { background: 'linear-gradient(135deg, #a855f7 0%, #7e22ce 100%)', color: '#fff', borderColor: '#c084fc' } : {})
+                                  }}
+                                  title={canAffordPaid ? `Order with Wallet (${usd(cyclePriceCents)})` : 'Configure paid order / Top Up Wallet'}
+                                >
+                                  <CreditCard size={12} /> {!engineReady ? 'Standby' : `Order ${usd(cyclePriceCents)}`}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </section>
           )}
 
@@ -1164,10 +1502,11 @@ export default function App() {
                       const isProvisioned = req.status === 'provisioned';
                       const isPending = req.status === 'pending';
                       const isError = req.status === 'provisioning-error';
+                      const isPaidServer = req.billingType === 'paid';
                       return (
                         <div className="request-item" key={req.id}>
                           <div className="request-info">
-                            <span className="request-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span className="request-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                               {isMc ? <Box size={14} color="#c084fc" /> : <Server size={14} color="#f5c84d" />}
                               {req.displayName || req.hostname || req.planName || (isMc ? 'Minecraft Server' : 'Cloud VPS')}
                               {isMc && (
@@ -1175,9 +1514,15 @@ export default function App() {
                                   MC PTERODACTYL
                                 </span>
                               )}
+                              {isPaidServer && (
+                                <span className="plan-paid-badge">
+                                  PAID · {String(req.billingCycle || 'monthly').toUpperCase()}
+                                </span>
+                              )}
                             </span>
                             <span className="request-meta">
-                              ID: {req.id.slice(0, 8)}... · Cost: {money(req.cost)} HZL · Submitted: {new Date(req.createdAt).toLocaleDateString()}
+                              ID: {req.id.slice(0, 8)}... · {isPaidServer ? `Plan: ${usd(req.recurringCents)} / ${req.billingCycle || 'monthly'}` : `Cost: ${money(req.cost)} HZL`} · Submitted: {new Date(req.createdAt).toLocaleDateString()}
+                              {isPaidServer && req.paidUntil ? ` · Paid until: ${new Date(req.paidUntil).toLocaleDateString()}` : ''}
                               {isMc ? (
                                 <>
                                   {req.serverIp ? ` · Address: ${req.serverIp}:${req.serverPort || 25565}` : ''}
@@ -1199,7 +1544,37 @@ export default function App() {
                               </span>
                             )}
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            {isPaidServer && ['provisioned', 'suspended'].includes(req.status) && (
+                              <>
+                                <label className="billing-autorenew-toggle" style={{ marginRight: '4px' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(req.autoRenew)}
+                                    onChange={e => toggleServerAutoRenew(req.id, e.target.checked)}
+                                    disabled={busy}
+                                  />
+                                  <span>Auto-Renew</span>
+                                </label>
+                                <button
+                                  type="button"
+                                  className="btn-pill primary sm"
+                                  style={{ padding: '4px 10px', fontSize: '11px' }}
+                                  onClick={() => renewPaidServer(req.id, req.billingCycle || 'monthly')}
+                                  disabled={busy}
+                                >
+                                  Renew ({usd(req.recurringCents)})
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-pill secondary sm"
+                                  style={{ padding: '4px 10px', fontSize: '11px' }}
+                                  onClick={() => selectConsoleTab('billing')}
+                                >
+                                  Billing
+                                </button>
+                              </>
+                            )}
                             <span className={`status-badge ${isProvisioned ? 'provisioned' : isPending ? 'pending' : isError ? 'error' : 'provisioning'}`}>
                               {isProvisioned ? <Check size={11} /> : isPending ? <Activity size={11} /> : <Server size={11} />}
                               {req.provisioningStatus || req.status}
@@ -1220,6 +1595,27 @@ export default function App() {
                 )}
               </div>
             </section>
+          )}
+
+          {/* TAB 2B: BILLING, WALLET & SUBSCRIPTIONS */}
+          {activeTab === 'billing' && (
+            <BillingCenter
+              me={me}
+              rewards={rewards}
+              billing={billing}
+              hostingRequests={hostingRequests}
+              hostingOptions={hostingOptions}
+              busy={busy}
+              onRefreshBilling={loadData}
+              onSubmitManualTopup={submitManualTopup}
+              onStartStripeTopup={startStripeTopup}
+              onStartPayhereTopup={startPayhereTopup}
+              onRenewServer={renewPaidServer}
+              onToggleAutoRenew={toggleServerAutoRenew}
+              onUpgradeServer={upgradePaidServer}
+              onGoToDeploy={() => { setCatalogPaymentFilter('paid'); selectConsoleTab('deploy'); }}
+              onToast={setToast}
+            />
           )}
 
           {/* TAB 3: DISCORD SERVER INVITE & REFERRAL HUB */}
@@ -1850,8 +2246,38 @@ export default function App() {
         );
       })()}
 
-      <VpsDeployModal plan={vpsModalPlan} nodes={vpsDeploymentOptions.nodes} osOptions={vpsDeploymentOptions.osOptions} balance={rewards?.balance || 0} busy={busy} onClose={() => setVpsModalPlan(null)} onLoadTemplates={loadVpsTemplates} onDeploy={config => executeHostingRequest(vpsModalPlan, config)} />
-      <MinecraftDeployModal plan={mcModalPlan} eggs={mcEggs} nodes={mcNodes} balance={rewards?.balance || 0} busy={busy} onClose={() => setMcModalPlan(null)} onDeploy={config => executeHostingRequest(mcModalPlan, config)} />
+      <VpsDeployModal
+        plan={vpsModalPlan}
+        nodes={vpsDeploymentOptions.nodes}
+        osOptions={vpsDeploymentOptions.osOptions}
+        balance={rewards?.balance || 0}
+        walletCents={walletCents}
+        usdToLkrRate={usdToLkrRate}
+        checkoutType={deployCheckoutType}
+        initialCycle={catalogCycle}
+        busy={busy}
+        onClose={() => setVpsModalPlan(null)}
+        onLoadTemplates={loadVpsTemplates}
+        onValidatePromo={validatePromoForModal}
+        onOpenBilling={() => selectConsoleTab('billing')}
+        onDeploy={config => executeHostingRequest(vpsModalPlan, config)}
+      />
+      <MinecraftDeployModal
+        plan={mcModalPlan}
+        eggs={mcEggs}
+        nodes={mcNodes}
+        balance={rewards?.balance || 0}
+        walletCents={walletCents}
+        usdToLkrRate={usdToLkrRate}
+        checkoutType={deployCheckoutType}
+        initialCycle={catalogCycle}
+        busy={busy}
+        onClose={() => setMcModalPlan(null)}
+        onValidatePromo={validatePromoForModal}
+        onOpenBilling={() => selectConsoleTab('billing')}
+        onDeploy={config => executeHostingRequest(mcModalPlan, config)}
+      />
+      <LegalModal docKey={legalDoc} onClose={() => setLegalDoc(null)} />
 
       {/* One-time credentials for a newly provisioned LXC */}
       {(generatedPrivateKey || generatedRootPassword) && (
@@ -1888,11 +2314,14 @@ export default function App() {
             <a href="#services">Services</a>
             <a href="#infrastructure">Infrastructure</a>
             <a href="#rewards">Rewards</a>
+            <button type="button" className="footer-legal-btn" onClick={() => setLegalDoc('terms')}>Terms</button>
+            <button type="button" className="footer-legal-btn" onClick={() => setLegalDoc('refund')}>Refund Policy</button>
+            <button type="button" className="footer-legal-btn" onClick={() => setLegalDoc('privacy')}>Privacy</button>
           </div>
         </div>
         <div className="footer-bottom">
-          <span>© 2026 HelzerX Cloud · Verified community cloud infrastructure.</span>
-          <span>HZL is an internal reward credit for eligible hosting redemptions with no cash value.</span>
+          <span>© 2026 HelzerX Cloud · Verified community &amp; enterprise cloud infrastructure.</span>
+          <span>HZL has no cash withdrawal value; USD/LKR wallet purchases are covered by our Refund Policy.</span>
         </div>
         <div className="footer-giant-wordmark" aria-hidden="true">
           <img

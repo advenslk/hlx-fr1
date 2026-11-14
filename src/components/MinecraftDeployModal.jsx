@@ -1,21 +1,52 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Cpu, HardDrive, Server, X, ChevronDown, Sparkles, ShieldCheck } from 'lucide-react';
+import { Box, Server, X, ChevronDown, Sparkles, CreditCard, Tag, Wallet } from 'lucide-react';
 import './MinecraftDeployModal.css';
 
 const money = n => new Intl.NumberFormat('en-US').format(Number(n) || 0);
+const usd = cents => '$' + (Number(cents || 0) / 100).toFixed(2);
+const lkr = (cents, rate = 300) => 'Rs. ' + money(Math.round((Number(cents || 0) / 100) * Number(rate || 300)));
+
+function getPlanCycleCents(plan, cycle) {
+  const baseHzl = Math.max(100, Number(plan?.cost || 500));
+  const rawMonthly = Math.max(199, Math.round((baseHzl / 500) * 299));
+  const fallbackMonthly = Math.floor(rawMonthly / 100) * 100 + 99;
+  const pp = plan?.paidPricing || {};
+  const m = Number(pp.monthlyCents) > 0 ? Number(pp.monthlyCents) : fallbackMonthly;
+  const q = Number(pp.quarterlyCents) > 0 ? Number(pp.quarterlyCents) : Math.round(m * 3 * 0.9);
+  const y = Number(pp.yearlyCents) > 0 ? Number(pp.yearlyCents) : Math.round(m * 12 * 0.8);
+  if (cycle === 'quarterly') return q;
+  if (cycle === 'yearly') return y;
+  return m;
+}
 
 export default function MinecraftDeployModal({
   plan,
   eggs = [],
   nodes = [],
   balance = 0,
+  walletCents = 0,
+  usdToLkrRate = 300,
+  checkoutType: initialCheckoutType = 'hzl',
+  initialCycle = 'monthly',
   busy,
   onClose,
-  onDeploy
+  onDeploy,
+  onValidatePromo,
+  onOpenBilling
 }) {
   const [name, setName] = useState('');
   const [eggId, setEggId] = useState(eggs[0]?.id || 'paper-1-20');
   const [nodeId, setNodeId] = useState(nodes[0]?.id || 'tokyo-01');
+
+  // Paid billing state
+  const [checkoutType, setCheckoutType] = useState(initialCheckoutType);
+  const [billingCycle, setBillingCycle] = useState(initialCycle);
+  const [promoInput, setPromoInput] = useState('');
+  const [appliedPromo, setAppliedPromo] = useState(null);
+  const [promoMsg, setPromoMsg] = useState('');
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [useHzlCredit, setUseHzlCredit] = useState(false);
+  const [autoRenew, setAutoRenew] = useState(true);
 
   useEffect(() => {
     if (!plan) return;
@@ -26,12 +57,38 @@ export default function MinecraftDeployModal({
     if (nodes.length && !nodes.find(n => n.id === nodeId)) {
       setNodeId(nodes[0].id);
     }
-  }, [plan?.id]);
+    const effectiveMode = plan.billingMode === 'paid'
+      ? 'paid'
+      : plan.billingMode === 'hzl'
+      ? 'hzl'
+      : (initialCheckoutType === 'paid' ? 'paid' : 'hzl');
+    setCheckoutType(effectiveMode);
+    setBillingCycle(initialCycle || 'monthly');
+    setPromoInput('');
+    setAppliedPromo(null);
+    setPromoMsg('');
+    setUseHzlCredit(false);
+    setAutoRenew(true);
+  }, [plan?.id, initialCheckoutType, initialCycle]);
+
+  useEffect(() => {
+    setAppliedPromo(null);
+    setPromoMsg('');
+  }, [billingCycle]);
 
   if (!plan) return null;
 
+  const isPaid = checkoutType === 'paid' && plan.billingMode !== 'hzl';
   const cost = Number(plan.cost || 0);
-  const canAfford = Number(balance) >= cost;
+  const subtotalCents = getPlanCycleCents(plan, billingCycle);
+  const promoDiscountCents = appliedPromo ? Math.min(subtotalCents, Number(appliedPromo.discountCents || 0)) : 0;
+  const afterPromoCents = Math.max(0, subtotalCents - promoDiscountCents);
+  const maxHzlDiscount = Math.min(Math.floor(afterPromoCents * 0.5), Math.floor(Math.max(0, Number(balance || 0)) / 10));
+  const hzlDiscountCents = useHzlCredit ? maxHzlDiscount : 0;
+  const hzlUsed = hzlDiscountCents * 10;
+  const finalTotalCents = Math.max(0, afterPromoCents - hzlDiscountCents);
+
+  const canAfford = isPaid ? Number(walletCents) >= finalTotalCents : Number(balance) >= cost;
   const validName = /^[a-z0-9](?:[a-z0-9-]{0,24}[a-z0-9])?$/.test(name) && name.length >= 2;
   const canSubmit = validName && canAfford && !busy;
 
@@ -42,14 +99,55 @@ export default function MinecraftDeployModal({
   const cores = plan.pterodactyl?.cores || 1;
   const diskGb = plan.pterodactyl?.disk || 10;
 
+  async function handleApplyPromo() {
+    const clean = promoInput.trim().toUpperCase();
+    if (!clean) {
+      setAppliedPromo(null);
+      setPromoMsg('');
+      return;
+    }
+    if (typeof onValidatePromo !== 'function') return;
+    setPromoLoading(true);
+    setPromoMsg('');
+    try {
+      const res = await onValidatePromo({ code: clean, subtotalCents, service: 'minecraft' });
+      if (res?.valid) {
+        setAppliedPromo({ code: res.promo?.code || clean, discountCents: res.discountCents });
+        setPromoMsg(`Promo ${res.promo?.code || clean} applied (-${usd(res.discountCents)})`);
+      } else {
+        setAppliedPromo(null);
+        setPromoMsg(res?.error || 'Invalid promo code.');
+      }
+    } catch (err) {
+      setAppliedPromo(null);
+      setPromoMsg(err?.message || 'Promo validation failed.');
+    } finally {
+      setPromoLoading(false);
+    }
+  }
+
   function handleSubmit(e) {
     e.preventDefault();
     if (!canSubmit) return;
-    onDeploy({
-      displayName: name,
-      eggId,
-      nodeId
-    });
+    if (isPaid) {
+      onDeploy({
+        checkoutType: 'paid',
+        displayName: name,
+        eggId,
+        nodeId,
+        billingCycle,
+        promoCode: appliedPromo?.code || '',
+        useHzlCredit,
+        autoRenew
+      });
+    } else {
+      onDeploy({
+        checkoutType: 'hzl',
+        displayName: name,
+        eggId,
+        nodeId
+      });
+    }
   }
 
   return (
@@ -68,7 +166,7 @@ export default function MinecraftDeployModal({
         <div className="mc-modal-ambient" />
         <header className="mc-modal-header">
           <div className="mc-modal-kicker">
-            <i className="mc-live-dot" /> PTERODACTYL ENGINE <span style={{ opacity: 0.5 }}>/</span> MINECRAFT CLOUD
+            <i className="mc-live-dot" /> PTERODACTYL ENGINE <span style={{ opacity: 0.5 }}>/</span> {isPaid ? 'PAID MINECRAFT HOSTING' : 'MINECRAFT CLOUD'}
           </div>
           <button
             className="mc-modal-close"
@@ -83,12 +181,51 @@ export default function MinecraftDeployModal({
             Deploy <span>Minecraft Server.</span>
           </h2>
           <p>
-            Powered by Pterodactyl container orchestration. Redeem your verified HZL credits for dedicated game hosting.
+            {isPaid
+              ? 'Powered by Pterodactyl container orchestration. Instant wallet settlement with recurring renewals and numbered invoices.'
+              : 'Powered by Pterodactyl container orchestration. Redeem your verified HZL credits for dedicated game hosting.'}
           </p>
         </header>
 
         <form onSubmit={handleSubmit} className="mc-modal-layout">
           <div className="mc-config-fields">
+            {plan.billingMode === 'both' && (
+              <div className="mc-field">
+                <span><CreditCard size={13} /> PAYMENT MODE</span>
+                <div className="mc-mode-switch">
+                  <button type="button" className={!isPaid ? 'selected' : ''} onClick={() => setCheckoutType('hzl')}>
+                    HZL Credit ({money(cost)} HZL)
+                  </button>
+                  <button type="button" className={isPaid ? 'selected' : ''} onClick={() => setCheckoutType('paid')}>
+                    Paid Wallet ({usd(getPlanCycleCents(plan, billingCycle))})
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {isPaid && (
+              <div className="mc-field">
+                <span><CreditCard size={13} /> BILLING CYCLE</span>
+                <div className="mc-cycle-pills">
+                  {[
+                    { id: 'monthly', label: 'Monthly' },
+                    { id: 'quarterly', label: 'Quarterly (-10%)' },
+                    { id: 'yearly', label: 'Yearly (-20%)' }
+                  ].map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className={`mc-cycle-btn ${billingCycle === c.id ? 'selected' : ''}`}
+                      onClick={() => setBillingCycle(c.id)}
+                    >
+                      <span>{c.label}</span>
+                      <b>{usd(getPlanCycleCents(plan, c.id))}</b>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <label className="mc-field">
               <span>
                 SERVER DISPLAY NAME <small>2–26 characters</small>
@@ -156,6 +293,36 @@ export default function MinecraftDeployModal({
                 Enterprise BGP network connection with DDoS protection.
               </small>
             </label>
+
+            {isPaid && (
+              <div className="mc-billing-extras">
+                <div className="mc-promo-row">
+                  <input
+                    type="text"
+                    value={promoInput}
+                    onChange={e => setPromoInput(e.target.value.toUpperCase())}
+                    placeholder="Promo code (optional)"
+                    maxLength={24}
+                  />
+                  <button type="button" className="mc-promo-btn" onClick={handleApplyPromo} disabled={promoLoading}>
+                    <Tag size={12} /> {promoLoading ? 'Checking…' : 'Apply'}
+                  </button>
+                </div>
+                {promoMsg && <small className={appliedPromo ? 'mc-promo-ok' : 'mc-field-error'}>{promoMsg}</small>}
+
+                {Number(balance) >= 100 && (
+                  <label className="mc-checkbox-row">
+                    <input type="checkbox" checked={useHzlCredit} onChange={e => setUseHzlCredit(e.target.checked)} />
+                    <span>Apply HZL loyalty discount (1,000 HZL = $1.00, up to 50% off · saves {usd(maxHzlDiscount)})</span>
+                  </label>
+                )}
+
+                <label className="mc-checkbox-row">
+                  <input type="checkbox" checked={autoRenew} onChange={e => setAutoRenew(e.target.checked)} />
+                  <span>Enable Auto-Renew from Wallet before expiration</span>
+                </label>
+              </div>
+            )}
           </div>
 
           <aside className="mc-order-summary">
@@ -164,7 +331,7 @@ export default function MinecraftDeployModal({
               <div className="mc-voxel-block">
                 <div className="mc-face mc-face-front">
                   <div className="mc-block-gem" />
-                  <span className="mc-block-text">HZL MC</span>
+                  <span className="mc-block-text">{isPaid ? 'PRO MC' : 'HZL MC'}</span>
                 </div>
                 <div className="mc-face mc-face-back" />
                 <div className="mc-face mc-face-top" />
@@ -199,37 +366,79 @@ export default function MinecraftDeployModal({
                 <span>Target Node</span>
                 <b>{currentNode.name?.split('(')[0] || currentNode.name}</b>
               </div>
-            </div>
-
-            <div className="mc-cost-total">
-              <span>Redemption Cost</span>
-              <b>{money(cost)} <small style={{ fontSize: '13px', color: '#c084fc' }}>HZL</small></b>
-            </div>
-
-            <div className="mc-balance-info">
-              <span>Your balance:</span>
-              <strong style={{ color: canAfford ? '#34d399' : '#f87171' }}>
-                {money(balance)} HZL
-              </strong>
-            </div>
-
-            <button
-              type="submit"
-              className="mc-deploy-submit"
-              disabled={!canSubmit}
-            >
-              {busy ? (
-                'Provisioning Server…'
-              ) : !canAfford ? (
-                'Insufficient HZL Balance'
-              ) : !validName ? (
-                'Enter Server Name'
-              ) : (
-                <>
-                  <Sparkles size={14} /> Deploy Minecraft Server
-                </>
+              {isPaid && promoDiscountCents > 0 && (
+                <div className="mc-spec-item" style={{ color: '#86efac' }}>
+                  <span>Promo ({appliedPromo?.code})</span>
+                  <b>-{usd(promoDiscountCents)}</b>
+                </div>
               )}
-            </button>
+              {isPaid && hzlDiscountCents > 0 && (
+                <div className="mc-spec-item" style={{ color: '#fcd34d' }}>
+                  <span>HZL Discount ({money(hzlUsed)} HZL)</span>
+                  <b>-{usd(hzlDiscountCents)}</b>
+                </div>
+              )}
+            </div>
+
+            {isPaid ? (
+              <>
+                <div className="mc-cost-total">
+                  <span>Total ({billingCycle})</span>
+                  <b>{usd(finalTotalCents)} <small style={{ fontSize: '11px', color: '#c084fc' }}>({lkr(finalTotalCents, usdToLkrRate)})</small></b>
+                </div>
+                <div className="mc-balance-info">
+                  <span>Wallet balance:</span>
+                  <strong style={{ color: canAfford ? '#34d399' : '#f87171' }}>
+                    {usd(walletCents)}
+                  </strong>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mc-cost-total">
+                  <span>Redemption Cost</span>
+                  <b>{money(cost)} <small style={{ fontSize: '13px', color: '#c084fc' }}>HZL</small></b>
+                </div>
+                <div className="mc-balance-info">
+                  <span>Your balance:</span>
+                  <strong style={{ color: canAfford ? '#34d399' : '#f87171' }}>
+                    {money(balance)} HZL
+                  </strong>
+                </div>
+              </>
+            )}
+
+            {isPaid && !canAfford && typeof onOpenBilling === 'function' ? (
+              <button
+                type="button"
+                className="mc-deploy-submit"
+                onClick={() => { onClose(); onOpenBilling(); }}
+              >
+                <Wallet size={14} /> Top Up Wallet (+{usd(finalTotalCents - Number(walletCents || 0))} needed)
+              </button>
+            ) : (
+              <button
+                type="submit"
+                className="mc-deploy-submit"
+                disabled={!canSubmit}
+              >
+                {busy ? (
+                  'Provisioning Server…'
+                ) : !canAfford ? (
+                  isPaid ? 'Insufficient Wallet Balance' : 'Insufficient HZL Balance'
+                ) : !validName ? (
+                  'Enter Server Name'
+                ) : isPaid ? (
+                  <>
+                    <CreditCard size={14} /> Pay {usd(finalTotalCents)} &amp; Deploy
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={14} /> Deploy Minecraft Server
+                  </>
+                )}
+              </button>
+            )}
           </aside>
         </form>
       </section>

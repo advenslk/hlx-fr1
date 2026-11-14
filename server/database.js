@@ -26,7 +26,22 @@ db.exec(`
     applied_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   INSERT OR IGNORE INTO schema_migrations(version) VALUES (1);
+  INSERT OR IGNORE INTO schema_migrations(version) VALUES (2);
 `);
+
+const ALL_COLLECTIONS = [
+  'users',
+  'claims',
+  'inviteClaims',
+  'hostingRequests',
+  'tickets',
+  'plans',
+  'auditLogs',
+  'invoices',
+  'transactions',
+  'topupRequests',
+  'promoCodes'
+];
 
 const selectAll = db.prepare('SELECT record_id, payload FROM app_records WHERE collection = ? ORDER BY created_at, record_id');
 const upsert = db.prepare(`INSERT INTO app_records(collection, record_id, payload, updated_at)
@@ -59,7 +74,7 @@ export function replaceCollection(name, records) {
 
 export function readState() {
   const result = {};
-  for (const name of ['users','claims','inviteClaims','hostingRequests','tickets','plans','auditLogs']) {
+  for (const name of ALL_COLLECTIONS) {
     const records = readCollection(name);
     result[name] = name === 'users'
       ? Object.fromEntries(records.map(x => [x.id, x.value]))
@@ -70,7 +85,7 @@ export function readState() {
 
 export function writeState(state) {
   transaction(value => {
-    for (const name of ['users','claims','inviteClaims','hostingRequests','tickets','plans','auditLogs']) {
+    for (const name of ALL_COLLECTIONS) {
       const items = name === 'users'
         ? Object.entries(value[name] || {}).map(([id, record]) => ({ id, value: record }))
         : (value[name] || []).map(record => {

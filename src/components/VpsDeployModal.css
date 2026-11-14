@@ -46,3 +46,15 @@
 .vps-os-error{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap}.vps-os-error .vps-field-error{flex:1}.vps-inline-retry{display:inline-flex;align-items:center;gap:5px;padding:3px 7px;border:1px solid #d6ad4540;border-radius:5px;background:#eab52b0d;color:#f0c75b;font-size:10px;font-weight:750;cursor:pointer}.vps-inline-retry:hover{background:#eab52b1a}
 
 @media(max-width:420px){.vps-modal-backdrop{padding:5px}.vps-deploy-modal{max-height:calc(100dvh - 10px);border-radius:10px}.vps-modal-header{padding:20px 14px 15px}.vps-modal-header h2{font-size:27px;padding-right:28px}.vps-modal-layout{padding:13px;gap:15px}.vps-field input,.vps-select-wrap select{min-height:46px;font-size:13px}.vps-field>span{font-size:9px}.vps-order-summary{padding:12px}.vps-3d-server{height:150px}.vps-cost-breakdown .vps-total b{font-size:20px}}
+.vps-cycle-pills{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.vps-cycle-btn{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 6px;border:1px solid #ffffff1c;border-radius:8px;background:#0b0b0a;color:#9b968a;font-size:10px;cursor:pointer;transition:border-color .18s,background .18s,color .18s}
+.vps-cycle-btn b{color:#ece7d8;font-size:12px}
+.vps-cycle-btn.selected{border-color:#e8b636a8;background:linear-gradient(125deg,rgba(223,164,31,.2),rgba(255,202,69,.06));color:#ffdc79}
+.vps-cycle-btn.selected b{color:#ffdc79}
+.vps-billing-extras{display:flex;flex-direction:column;gap:9px;padding:12px;border:1px solid #ffffff14;border-radius:9px;background:#0a0a09}
+.vps-promo-row{display:flex;gap:6px;align-items:center}
+.vps-promo-row input{flex:1;min-height:36px;border:1px solid #ffffff20;border-radius:7px;background:#11110f;color:#f3f0e8;padding:0 10px;font-size:12px;outline:none}
+.vps-promo-ok{font-size:10.5px;color:#86efac}
+.vps-checkbox-row{display:flex;align-items:flex-start;gap:8px;font-size:11px;color:#b8b2a2;line-height:1.45;cursor:pointer}
+.vps-checkbox-row input{margin-top:2px;accent-color:#f5c449}
+

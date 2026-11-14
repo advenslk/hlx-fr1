@@ -437,3 +437,131 @@
     grid-template-columns: 1fr;
   }
 }
+
+.mc-mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(10, 12, 20, 0.9);
+}
+
+.mc-mode-switch button {
+  min-height: 34px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.mc-mode-switch button.selected {
+  background: linear-gradient(120deg, rgba(168, 85, 247, 0.28), rgba(147, 51, 234, 0.12));
+  color: #e9d5ff;
+  box-shadow: inset 0 0 0 1px rgba(192, 132, 252, 0.4);
+}
+
+.mc-cycle-pills {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.mc-cycle-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  background: rgba(15, 17, 26, 0.85);
+  color: #94a3b8;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.mc-cycle-btn b {
+  color: #f1f5f9;
+  font-size: 12px;
+}
+
+.mc-cycle-btn.selected {
+  border-color: rgba(192, 132, 252, 0.6);
+  background: rgba(168, 85, 247, 0.16);
+  color: #e9d5ff;
+}
+
+.mc-cycle-btn.selected b {
+  color: #e9d5ff;
+}
+
+.mc-billing-extras {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(10, 12, 20, 0.78);
+}
+
+.mc-promo-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.mc-promo-row input {
+  flex: 1;
+  min-height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(15, 17, 26, 0.9);
+  color: #fff;
+  padding: 0 10px;
+  font-size: 12px;
+  outline: none;
+}
+
+.mc-promo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 36px;
+  padding: 0 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(192, 132, 252, 0.4);
+  background: rgba(168, 85, 247, 0.18);
+  color: #e9d5ff;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mc-promo-ok {
+  font-size: 11px;
+  color: #86efac;
+}
+
+.mc-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 11.5px;
+  color: #cbd5e1;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.mc-checkbox-row input {
+  margin-top: 2px;
+  accent-color: #a855f7;
+}
+
