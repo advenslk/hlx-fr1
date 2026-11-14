@@ -2732,28 +2732,19 @@ html, body {
         <div class="mc-deploy-form-group">
           <label>Software Edition (Egg)</label>
           <select id="mcDeployEgg">
-            <option value="paper-1-20">Paper 1.20.4 (High Performance SMP)</option>
-            <option value="purpur-1-20">Purpur 1.20.4 (Optimized Mechanics)</option>
-            <option value="fabric-1-20">Fabric 1.20.4 (Modern Modding)</option>
-            <option value="forge-1-20">Forge 1.20.2 (Heavy Modpacks)</option>
-            <option value="vanilla-1-20">Vanilla 1.20.4</option>
-            <option value="bedrock">Bedrock Dedicated Server</option>
+            <option value="">Loading live Pterodactyl eggs…</option>
           </select>
         </div>
         <div class="mc-deploy-form-group">
           <label>Minecraft Plan Tier</label>
           <select id="mcDeployPlan">
-            <option value="mc-starter">Minecraft Starter SMP (2GB RAM, 1 vCPU, 10GB NVMe) · 400 HZL</option>
-            <option value="mc-smp">Minecraft Community SMP (4GB RAM, 2 vCPU, 25GB NVMe) · 800 HZL</option>
-            <option value="mc-modded">Minecraft Modded & Network (8GB RAM, 4 vCPU, 50GB NVMe) · 1,500 HZL</option>
+            <option value="">Loading enabled plans…</option>
           </select>
         </div>
         <div class="mc-deploy-form-group">
           <label>Datacenter Region Node</label>
           <select id="mcDeployNode">
-            <option value="tokyo-01">Tokyo, Japan (Ultra Low Latency Asia)</option>
-            <option value="singapore-01">Singapore (Southeast Asia Node)</option>
-            <option value="us-east-01">US East (Virginia Datacenter)</option>
+            <option value="">Loading live Pterodactyl nodes…</option>
           </select>
         </div>
         <div style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px;margin:16px 0;display:flex;justify-content:space-between;align-items:center">
@@ -2795,7 +2786,7 @@ html, body {
       <div style="background:rgba(0,0,0,0.4);border:1px solid rgba(168,85,247,0.3);border-radius:12px;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
         <div>
           <small style="color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:0.08em;font-weight:700">Server Connection Address</small>
-          <div style="font-family:'JetBrains Mono',monospace;font-size:15px;color:#c084fc;font-weight:700" id="mcLiveAddress">play.helzerx.net:25565</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:15px;color:#c084fc;font-weight:700" id="mcLiveAddress">—</div>
         </div>
         <button class="btn-ctrl" id="btnCopyMcLiveAddress" style="padding:6px 12px;font-size:11px">📋 Copy Address</button>
       </div>
@@ -2972,7 +2963,7 @@ function renderInstances() {
     const canRemoveFailed = isFailed && (inst.vmid === undefined || inst.vmid === null || String(inst.vmid).trim() === '');
 
     if (isMc) {
-      const address = (inst.serverIp || 'play.helzerx.net') + ':' + (inst.serverPort || 25565);
+      const address = inst.serverIp ? `${inst.serverIp}:${inst.serverPort || 25565}` : 'Pending Allocation';
       const isOnline = status === 'provisioned' || status === 'running';
 
       return `
@@ -2988,7 +2979,7 @@ function renderInstances() {
               </div>
               <div>
                 <h4>${esc(inst.displayName || inst.hostname || inst.planName || 'Minecraft Server')}</h4>
-                <span>${esc(inst.eggName || 'Paper 1.20')} · Identifier: ${esc(inst.identifier || 'ptero')}</span>
+                <span>${esc(inst.eggName || 'Pterodactyl')} · Identifier: ${esc(inst.identifier || '—')}</span>
               </div>
             </div>
             <span class="status-badge ${isOnline ? 'provisioned' : 'suspended'}">
@@ -2999,21 +2990,21 @@ function renderInstances() {
 
           <div class="mc-address-pill">
             <span><strong>Address:</strong> ${esc(address)}</span>
-            <button type="button" data-copy-addr="${esc(address)}" title="Copy Server Address">📋 Copy</button>
+            <button type="button" data-copy-addr="${esc(address)}" ${!inst.serverIp ? 'disabled' : ''} title="Copy Server Address">📋 Copy</button>
           </div>
 
           <div class="instance-specs-row">
             <div class="spec-box">
               <small>Plan</small>
-              <b>${esc(inst.planName || 'Starter SMP')}</b>
+              <b>${esc(inst.planName || '—')}</b>
             </div>
             <div class="spec-box">
               <small>Resources</small>
-              <b>${esc(inst.pterodactyl?.memory || 2048)}MB · ${esc(inst.pterodactyl?.cores || 1)} Core</b>
+              <b>${esc(inst.pterodactyl?.memory || '—')}MB · ${esc(inst.pterodactyl?.cores || '—')} Core</b>
             </div>
             <div class="spec-box">
               <small>Node</small>
-              <b>${esc(inst.nodeName || 'Tokyo (JP)')}</b>
+              <b>${esc(inst.nodeName || '—')}</b>
             </div>
           </div>
 
@@ -3024,9 +3015,9 @@ function renderInstances() {
             <button class="btn-ctrl" data-mc-inspect="${esc(inst.id)}" ${!canControl ? 'disabled' : ''}>
               <span>↻ Refresh</span>
             </button>
-            <a class="btn-ctrl" href="${esc(inst.panelUrl || 'https://panel.helzerx.net')}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;display:inline-flex;align-items:center">
+            ${inst.panelUrl ? `<a class="btn-ctrl" href="${esc(inst.panelUrl)}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;display:inline-flex;align-items:center">
               <span>↗ Pterodactyl</span>
-            </a>
+            </a>` : ''}
             ${isFailed ? `
               <button class="btn-ctrl danger" data-remove-failed="${esc(inst.id)}">
                 <span>× Remove</span>
@@ -3221,7 +3212,8 @@ async function loadDashboardData() {
     $('statStudentCount').textContent = instancesList.length.toLocaleString();
     $('dashInstanceBadge').textContent = instancesList.length + ' instance' + (instancesList.length === 1 ? '' : 's');
     $('stripedBarValue').textContent = instancesList.filter(x => x.status === 'provisioned').length + ' Active';
-    $('statLectureValue').textContent = (instancesList.length * 2 || 4) + ' Cores';
+    const totalCores = instancesList.reduce((acc, item) => acc + Number(item.proxmox?.cores || item.pterodactyl?.cores || 0), 0);
+    $('statLectureValue').textContent = totalCores + ' Cores';
 
     renderInstances();
   } catch (err) {
@@ -3233,14 +3225,30 @@ async function loadDashboardData() {
 function openMinecraftDeployModal() {
   $('mcDeployUserBalance').textContent = Number(currentUserBalance || 0).toLocaleString() + ' HZL';
   const planSelect = $('mcDeployPlan');
+  const eggSelect = $('mcDeployEgg');
+  const nodeSelect = $('mcDeployNode');
+  const submitBtn = $('btnSubmitMcDeploy');
+
   const mcPlans = hostingOptionsData.options?.filter(x => x.service === 'minecraft') || [];
-  if (mcPlans.length) {
-    planSelect.innerHTML = mcPlans.map(p => `
-      <option value="${esc(p.id)}" data-cost="${esc(p.cost)}">
-        ${esc(p.name)} (${esc(p.pterodactyl?.memory || 2048)}MB RAM) · ${esc(p.cost)} HZL
-      </option>
-    `).join('');
-  }
+  const mcEggs = Array.isArray(hostingOptionsData.mcEggs) ? hostingOptionsData.mcEggs : [];
+  const mcNodes = Array.isArray(hostingOptionsData.mcNodes) ? hostingOptionsData.mcNodes : [];
+  const pteroReady = Boolean(hostingOptionsData.pterodactyl?.ready);
+
+  planSelect.innerHTML = mcPlans.length
+    ? mcPlans.map(p => `<option value="${esc(p.id)}" data-cost="${esc(p.cost)}">${esc(p.name)} (${esc(p.pterodactyl?.memory || '—')}MB RAM) · ${esc(p.cost)} HZL</option>`).join('')
+    : '<option value="">No Minecraft plans available</option>';
+
+  eggSelect.innerHTML = mcEggs.length
+    ? mcEggs.map(e => `<option value="${esc(e.id)}">${esc(e.label || e.name)}</option>`).join('')
+    : '<option value="">Pterodactyl eggs unavailable</option>';
+
+  nodeSelect.innerHTML = mcNodes.length
+    ? mcNodes.map(n => `<option value="${esc(n.id)}">${esc(n.label || n.name)}</option>`).join('')
+    : '<option value="">Pterodactyl nodes unavailable</option>';
+
+  submitBtn.disabled = !pteroReady || !mcPlans.length || !mcEggs.length || !mcNodes.length;
+  submitBtn.textContent = pteroReady ? '✦ Deploy Minecraft Server Now' : 'Pterodactyl Provisioning Standby';
+
   updateDeployCost();
   $('mcDeployModalOverlay').classList.add('open');
 }
@@ -3248,8 +3256,8 @@ function openMinecraftDeployModal() {
 function updateDeployCost() {
   const select = $('mcDeployPlan');
   const opt = select.options[select.selectedIndex];
-  const cost = opt?.dataset?.cost || '400';
-  $('mcDeployCost').textContent = Number(cost).toLocaleString() + ' HZL';
+  const cost = opt?.dataset?.cost;
+  $('mcDeployCost').textContent = cost ? Number(cost).toLocaleString() + ' HZL' : '—';
 }
 
 $('mcDeployPlan').addEventListener('change', updateDeployCost);
@@ -3306,30 +3314,39 @@ async function openMinecraftControlModal(id) {
   const item = instancesList.find(x => x.id === id);
   if (!item) return;
 
-  const addr = (item.serverIp || 'play.helzerx.net') + ':' + (item.serverPort || 25565);
+  const addr = item.serverIp ? `${item.serverIp}:${item.serverPort || 25565}` : 'Pending Allocation';
   $('mcModalTitle').textContent = item.displayName || item.hostname || 'Minecraft Server';
-  $('mcModalSubtitle').textContent = (item.eggName || 'Paper 1.20') + ' · Identifier: ' + (item.identifier || 'ptero');
+  $('mcModalSubtitle').textContent = (item.eggName || 'Pterodactyl') + ' · Identifier: ' + (item.identifier || '—');
   $('mcLiveAddress').textContent = addr;
-  $('mcPterodactylLink').href = item.panelUrl || 'https://panel.helzerx.net';
+  $('mcPterodactylLink').href = item.panelUrl || '#';
+  $('mcPterodactylLink').style.display = item.panelUrl ? 'inline-flex' : 'none';
 
-  $('mcConsoleScreen').textContent = 
-    `[Server thread/INFO]: [Pterodactyl Daemon] Connected to instance ${item.displayName || 'Minecraft'}\n` +
-    `[Server thread/INFO]: Allocated Port: ${item.serverPort || 25565} on ${item.nodeName || 'Tokyo'}\n` +
-    `[Server thread/INFO]: Software: ${item.eggName || 'Paper 1.20.4'}\n` +
-    `[Server thread/INFO]: Server is running with full RCON console socket.\n` +
-    `[Server thread/INFO]: Type command below to dispatch into daemon stdout.`;
+  $('mcLivePowerState').textContent = 'LOADING…';
+  $('mcLiveCpuUsage').textContent = '—';
+  $('mcLiveMemoryUsage').textContent = '—';
+  $('mcLiveDiskUsage').textContent = '—';
+
+  $('mcConsoleScreen').textContent =
+    `[Pterodactyl Client API] Target instance: ${item.displayName || item.hostname || item.id}\n` +
+    `[Pterodactyl Client API] Identifier: ${item.identifier || '—'} · Node: ${item.nodeName || '—'}\n` +
+    `[Pterodactyl Client API] Enter a server command below to dispatch via live client API.`;
 
   $('mcControlModalOverlay').classList.add('open');
 
   try {
     const inspect = await api('/api/control/mc/' + encodeURIComponent(id) + '/inspect');
     const live = inspect.live || {};
-    $('mcLivePowerState').textContent = (live.status || 'ONLINE').toUpperCase();
-    $('mcLiveCpuUsage').textContent = (live.cpu || 12.4).toFixed(1) + '%';
-    $('mcLiveMemoryUsage').textContent = Math.round(live.memory || 1420) + ' / ' + (item.pterodactyl?.memory || 4096) + ' MB';
-    $('mcLiveDiskUsage').textContent = ((live.disk || 2048) / 1024).toFixed(1) + ' / ' + (item.pterodactyl?.disk || 25) + ' GB';
+    const util = live.utilization || {};
+    const memMb = util.memoryBytes !== undefined ? Math.round(Number(util.memoryBytes) / (1024 * 1024)) : null;
+    const diskGb = util.diskBytes !== undefined ? (Number(util.diskBytes) / (1024 * 1024 * 1024)).toFixed(2) : null;
+
+    $('mcLivePowerState').textContent = String(live.status || item.status || 'UNKNOWN').toUpperCase();
+    $('mcLiveCpuUsage').textContent = util.cpuAbsolute !== undefined ? Number(util.cpuAbsolute).toFixed(1) + '%' : '—';
+    $('mcLiveMemoryUsage').textContent = memMb !== null ? memMb + ' MB' : '—';
+    $('mcLiveDiskUsage').textContent = diskGb !== null ? diskGb + ' GB' : '—';
   } catch (err) {
-    console.error('MC inspect error:', err);
+    $('mcLivePowerState').textContent = 'UNAVAILABLE';
+    $('mcConsoleScreen').textContent += `\n[Pterodactyl Telemetry Error]: ${err.message}`;
   }
 }
 
@@ -3440,9 +3457,9 @@ async function openControlModal(id) {
     const status = live.status || {};
 
     $('livePowerState').textContent = prettyStatus(status.status || item.status);
-    $('liveCpuCores').textContent = (cfg.cores ?? cfg.cpus ?? '2') + ' Cores';
-    $('liveMemoryAmt').textContent = cfg.memory ? Math.round(Number(cfg.memory) / 1024) + ' GB' : '4 GB';
-    $('liveDiskAmt').textContent = cfg.rootfs?.size || cfg.disk || '32 GB';
+    $('liveCpuCores').textContent = (cfg.cores ?? cfg.cpus) ? `${cfg.cores ?? cfg.cpus} Cores` : '—';
+    $('liveMemoryAmt').textContent = cfg.memory ? (Math.round(Number(cfg.memory) / 102.4) / 10) + ' GB' : '—';
+    $('liveDiskAmt').textContent = cfg.rootfs?.size || cfg.disk || '—';
 
     const snaps = live.snapshots || [];
     $('snapshotChips').innerHTML = snaps.length ? snaps.map(s => `

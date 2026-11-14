@@ -35,8 +35,8 @@ export default function MinecraftDeployModal({
   onOpenBilling
 }) {
   const [name, setName] = useState('');
-  const [eggId, setEggId] = useState(eggs[0]?.id || 'paper-1-20');
-  const [nodeId, setNodeId] = useState(nodes[0]?.id || 'tokyo-01');
+  const [eggId, setEggId] = useState(eggs[0]?.id || '');
+  const [nodeId, setNodeId] = useState(nodes[0]?.id || '');
 
   // Paid billing state
   const [checkoutType, setCheckoutType] = useState(initialCheckoutType);
@@ -51,12 +51,8 @@ export default function MinecraftDeployModal({
   useEffect(() => {
     if (!plan) return;
     setName('');
-    if (eggs.length && !eggs.find(e => e.id === eggId)) {
-      setEggId(eggs[0].id);
-    }
-    if (nodes.length && !nodes.find(n => n.id === nodeId)) {
-      setNodeId(nodes[0].id);
-    }
+    setEggId(eggs[0]?.id || '');
+    setNodeId(nodes[0]?.id || '');
     const effectiveMode = plan.billingMode === 'paid'
       ? 'paid'
       : plan.billingMode === 'hzl'
@@ -89,11 +85,12 @@ export default function MinecraftDeployModal({
   const finalTotalCents = Math.max(0, afterPromoCents - hzlDiscountCents);
 
   const canAfford = isPaid ? Number(walletCents) >= finalTotalCents : Number(balance) >= cost;
-  const validName = /^[a-z0-9](?:[a-z0-9-]{0,24}[a-z0-9])?$/.test(name) && name.length >= 2;
-  const canSubmit = validName && canAfford && !busy;
+  const validName = /^[a-z0-9](?:[a-z0-9_-]{0,28}[a-z0-9])?$/i.test(name) && name.length >= 2;
+  const hasCatalog = Boolean(eggId && nodeId && eggs.some(e => e.id === eggId) && nodes.some(n => n.id === nodeId));
+  const canSubmit = validName && hasCatalog && canAfford && !busy;
 
-  const currentEgg = eggs.find(e => e.id === eggId) || { name: 'Paper 1.20' };
-  const currentNode = nodes.find(n => n.id === nodeId) || { name: 'Tokyo, Japan' };
+  const currentEgg = eggs.find(e => e.id === eggId) || null;
+  const currentNode = nodes.find(n => n.id === nodeId) || null;
 
   const memoryMb = plan.pterodactyl?.memory || 2048;
   const cores = plan.pterodactyl?.cores || 1;
@@ -250,47 +247,42 @@ export default function MinecraftDeployModal({
                 <Box size={13} /> SERVER SOFTWARE (EGG)
               </span>
               <div className="mc-select-wrap">
-                <select value={eggId} onChange={e => setEggId(e.target.value)}>
-                  {(eggs.length ? eggs : [
-                    { id: 'paper-1-20', name: 'Paper 1.20.4 (High Performance)' },
-                    { id: 'purpur-1-20', name: 'Purpur 1.20.4 (Optimized SMP)' },
-                    { id: 'fabric-1-20', name: 'Fabric 1.20.4 (Modern Modding)' },
-                    { id: 'forge-1-20', name: 'Forge 1.20.2 (Heavy Modpacks)' },
-                    { id: 'vanilla-1-20', name: 'Vanilla Minecraft 1.20.4' },
-                    { id: 'bedrock', name: 'Bedrock Dedicated Server' }
-                  ]).map(egg => (
+                <select value={eggId} onChange={e => setEggId(e.target.value)} disabled={!eggs.length}>
+                  {!eggs.length && <option value="">No Pterodactyl eggs available</option>}
+                  {eggs.map(egg => (
                     <option key={egg.id} value={egg.id}>
-                      {egg.name}
+                      {egg.label || egg.name}
                     </option>
                   ))}
                 </select>
                 <ChevronDown size={15} />
               </div>
-              <small className="mc-field-hint">
-                Pterodactyl container image with auto-configured Java runtime.
+              <small className={eggs.length ? 'mc-field-hint' : 'mc-field-error'}>
+                {eggs.length
+                  ? 'Live Pterodactyl panel container runtime image.'
+                  : 'Pterodactyl panel eggs are unavailable. Configure PTERODACTYL_* on the server.'}
               </small>
             </label>
 
             <label className="mc-field">
               <span>
-                <Server size={13} /> CLUSTER REGION & NODE
+                <Server size={13} /> CLUSTER REGION &amp; NODE
               </span>
               <div className="mc-select-wrap">
-                <select value={nodeId} onChange={e => setNodeId(e.target.value)}>
-                  {(nodes.length ? nodes : [
-                    { id: 'tokyo-01', name: 'Tokyo, Japan (Ultra Low Latency Asia)' },
-                    { id: 'singapore-01', name: 'Singapore (Southeast Asia Node)' },
-                    { id: 'us-east-01', name: 'US East (Virginia Datacenter)' }
-                  ]).map(node => (
+                <select value={nodeId} onChange={e => setNodeId(e.target.value)} disabled={!nodes.length}>
+                  {!nodes.length && <option value="">No Pterodactyl nodes available</option>}
+                  {nodes.map(node => (
                     <option key={node.id} value={node.id}>
-                      {node.name}
+                      {node.label || node.name}
                     </option>
                   ))}
                 </select>
                 <ChevronDown size={15} />
               </div>
-              <small className="mc-field-hint">
-                Enterprise BGP network connection with DDoS protection.
+              <small className={nodes.length ? 'mc-field-hint' : 'mc-field-error'}>
+                {nodes.length
+                  ? 'Live datacenter node from Pterodactyl panel allocation.'
+                  : 'No live Pterodactyl nodes found. Verify PTERODACTYL_API_KEY and node setup.'}
               </small>
             </label>
 
@@ -360,11 +352,11 @@ export default function MinecraftDeployModal({
               </div>
               <div className="mc-spec-item">
                 <span>Software</span>
-                <b>{currentEgg.name}</b>
+                <b>{currentEgg ? (currentEgg.name || currentEgg.label) : '—'}</b>
               </div>
               <div className="mc-spec-item">
                 <span>Target Node</span>
-                <b>{currentNode.name?.split('(')[0] || currentNode.name}</b>
+                <b>{currentNode ? ((currentNode.name || currentNode.label)?.split('(')[0] || currentNode.name || currentNode.label) : '—'}</b>
               </div>
               {isPaid && promoDiscountCents > 0 && (
                 <div className="mc-spec-item" style={{ color: '#86efac' }}>

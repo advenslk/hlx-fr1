@@ -1,13 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import {
   AlertTriangle,
-  ArrowUpRight,
-  Banknote,
-  Building2,
-  Check,
-  Coins,
-  CreditCard,
   FileText,
+  PlusCircle,
   Printer,
   RefreshCw,
   Server,
@@ -29,20 +24,12 @@ export default function BillingCenter({
   hostingOptions = [],
   busy,
   onRefreshBilling,
-  onSubmitManualTopup,
-  onStartStripeTopup,
-  onStartPayhereTopup,
+  onOpenAddCredits,
   onRenewServer,
   onToggleAutoRenew,
   onUpgradeServer,
-  onGoToDeploy,
-  onToast
+  onGoToDeploy
 }) {
-  const [topupMethod, setTopupMethod] = useState('bank_transfer'); // 'bank_transfer' | 'crypto' | 'stripe' | 'payhere'
-  const [amountUsd, setAmountUsd] = useState('10');
-  const [referenceCode, setReferenceCode] = useState('');
-  const [senderName, setSenderName] = useState(me?.global_name || me?.username || '');
-  const [topupNote, setTopupNote] = useState('');
   const [invoiceFilter, setInvoiceFilter] = useState('all'); // 'all' | 'paid' | 'pending' | 'refunded'
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [upgradeModalServer, setUpgradeModalServer] = useState(null);
@@ -51,8 +38,6 @@ export default function BillingCenter({
   const rate = billing?.usdToLkrRate || 300;
   const cashCents = Number(billing?.cashBalanceCents ?? rewards?.cashBalanceCents ?? 0);
   const hzlBalance = Number(rewards?.balance || 0);
-  const numericUsd = Math.max(0, Number(amountUsd) || 0);
-  const previewCents = Math.round(numericUsd * 100);
 
   const paidServers = useMemo(
     () => (hostingRequests || []).filter(r => r.billingType === 'paid' && ['provisioned', 'suspended'].includes(r.status)),
@@ -67,38 +52,7 @@ export default function BillingCenter({
 
   const transactions = Array.isArray(billing?.transactions) ? billing.transactions : [];
   const topupRequests = Array.isArray(billing?.topupRequests) ? billing.topupRequests : [];
-
-  const bankCfg = billing?.gateways?.bankTransfer || {};
-  const cryptoCfg = billing?.gateways?.crypto || {};
-  const stripeEnabled = Boolean(billing?.gateways?.stripe?.enabled);
-  const payhereEnabled = Boolean(billing?.gateways?.payhere?.enabled);
-
-  async function handleTopupSubmit(e) {
-    e.preventDefault();
-    if (numericUsd < 1) {
-      onToast?.('Enter a valid amount of at least $1.00 USD.');
-      return;
-    }
-    if (topupMethod === 'stripe') {
-      await onStartStripeTopup?.(numericUsd);
-      return;
-    }
-    if (topupMethod === 'payhere') {
-      await onStartPayhereTopup?.(numericUsd);
-      return;
-    }
-    const ok = await onSubmitManualTopup?.({
-      method: topupMethod,
-      amountUsd: numericUsd,
-      referenceCode,
-      senderName,
-      note: topupNote
-    });
-    if (ok) {
-      setReferenceCode('');
-      setTopupNote('');
-    }
-  }
+  const pendingTopupsCount = topupRequests.filter(t => t.status === 'pending').length;
 
   function openUpgradeDialog(srv) {
     const candidates = (hostingOptions || []).filter(
@@ -117,17 +71,20 @@ export default function BillingCenter({
     <section className="rewards-section" id="billing">
       <div className="services-head">
         <div>
-          <div className="section-label">REAL-MONEY BILLING &amp; WALLET</div>
-          <h2 className="services-title">Billing, Wallet &amp; Paid Subscriptions</h2>
+          <div className="section-label">REAL-MONEY BILLING &amp; SUBSCRIPTIONS</div>
+          <h2 className="services-title">Billing, Subscriptions &amp; Invoices</h2>
           <p className="services-sub">
-            Top up your HelzerX Cloud Wallet via Bank Transfer, Crypto, PayHere (LKR), or Stripe, manage recurring paid VPS &amp; Minecraft plans, and download invoices.
+            Review your USD/LKR wallet balance, manage active paid VPS &amp; Minecraft auto-renewals, upgrade tiers cleanly, and export numbered invoices.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button className="btn-pill secondary sm" onClick={onRefreshBilling} disabled={busy}>
+          <button type="button" className="btn-pill secondary sm" onClick={onRefreshBilling} disabled={busy}>
             <RefreshCw size={12} /> Refresh Billing
           </button>
-          <button className="btn-pill primary sm" onClick={onGoToDeploy}>
+          <button type="button" className="btn-pill primary sm" onClick={onOpenAddCredits}>
+            <PlusCircle size={13} /> Add Credits
+          </button>
+          <button type="button" className="btn-pill secondary sm" onClick={onGoToDeploy}>
             <Sparkles size={12} /> Order Paid Plan
           </button>
         </div>
@@ -138,229 +95,93 @@ export default function BillingCenter({
         <div className="invite-progress-metrics">
           <div className="invite-metric-tile">
             <span>Wallet Credit Balance</span>
-            <strong style={{ color: 'var(--accent-gold)' }}>{usd(cashCents)}</strong>
+            <strong style={{ color: 'var(--accent-gold)', fontVariantNumeric: 'tabular-nums' }}>{usd(cashCents)}</strong>
             <small className="billing-sub-figure">{lkr(cashCents, rate)} est.</small>
           </div>
           <div className="invite-metric-tile">
             <span>HZL Loyalty Credit</span>
-            <strong>{money(hzlBalance)} <small style={{ fontSize: '12px', color: 'var(--accent-gold)' }}>HZL</small></strong>
+            <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{money(hzlBalance)} <small style={{ fontSize: '12px', color: 'var(--accent-gold)' }}>HZL</small></strong>
             <small className="billing-sub-figure">Up to {usd(Math.floor(hzlBalance / 10))} checkout discount</small>
           </div>
           <div className="invite-metric-tile">
             <span>Paid Active Servers</span>
-            <strong>{paidServers.length}</strong>
+            <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{paidServers.length}</strong>
             <small className="billing-sub-figure">
               {billing?.dueServersCount ? `${billing.dueServersCount} due / past due` : 'All subscriptions current'}
             </small>
           </div>
           <div className="invite-metric-tile">
             <span>Total Paid Spend</span>
-            <strong style={{ color: '#86efac' }}>{usd(billing?.totalPaidSpendCents || 0)}</strong>
+            <strong style={{ color: '#86efac', fontVariantNumeric: 'tabular-nums' }}>{usd(billing?.totalPaidSpendCents || 0)}</strong>
             <small className="billing-sub-figure">{(billing?.invoices || []).length} total invoice(s)</small>
           </div>
         </div>
       </div>
 
-      {/* Top-Up Wallet + Payment Methods Grid */}
+      {/* Dedicated Wallet Overview + Subscriptions Grid */}
       <div className="invite-hub-grid">
         <article className="invite-hub-card highlight">
           <div className="invite-card-head">
             <div>
-              <span className="invite-step-tag">WALLET TOP-UP</span>
-              <h3>Add Funds to Wallet</h3>
+              <span className="invite-step-tag">CLOUD WALLET OVERVIEW</span>
+              <h3>Wallet Funding &amp; Status</h3>
             </div>
             <Wallet size={20} color="var(--accent-gold)" />
           </div>
 
-          <div className="billing-preset-row">
-            {['5', '10', '25', '50', '100'].map(preset => (
-              <button
-                key={preset}
-                type="button"
-                className={`billing-preset-btn ${amountUsd === preset ? 'active' : ''}`}
-                onClick={() => setAmountUsd(preset)}
-              >
-                ${preset}
-              </button>
-            ))}
+          <p className="invite-helper-text">
+            Wallet funding now lives on the dedicated <strong>Add Credits</strong> page supporting real Stripe Card, PayHere (LKR), Sri Lanka Bank Transfer, and Crypto deposits configured on this server.
+          </p>
+
+          <div className="billing-bank-grid">
+            <div>
+              <span>Available Balance</span>
+              <b style={{ color: 'var(--accent-gold)', fontFamily: 'var(--font-mono)', fontSize: '15px' }}>{usd(cashCents)}</b>
+            </div>
+            <div>
+              <span>LKR Value</span>
+              <b style={{ color: '#86efac', fontFamily: 'var(--font-mono)', fontSize: '15px' }}>{lkr(cashCents, rate)}</b>
+            </div>
+            <div>
+              <span>Pending Top-Ups</span>
+              <b>{pendingTopupsCount} awaiting review</b>
+            </div>
+            <div>
+              <span>Exchange Rate</span>
+              <b style={{ fontFamily: 'var(--font-mono)' }}>1 USD = {rate} LKR</b>
+            </div>
           </div>
 
-          <form onSubmit={handleTopupSubmit} className="billing-topup-form">
-            <div className="invite-claim-grid">
-              <div className="form-group" style={{ gap: '6px' }}>
-                <label htmlFor="billing-topup-amount">Amount (USD)</label>
-                <input
-                  id="billing-topup-amount"
-                  type="number"
-                  min="1"
-                  max="2500"
-                  step="0.5"
-                  value={amountUsd}
-                  onChange={e => setAmountUsd(e.target.value)}
-                  required
-                />
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '6px' }}>
+            <button type="button" className="btn-pill primary" onClick={onOpenAddCredits}>
+              <PlusCircle size={14} /> Open Add Credits Page
+            </button>
+            <button type="button" className="btn-pill secondary" onClick={onGoToDeploy}>
+              <Sparkles size={14} /> Deploy Paid Server
+            </button>
+          </div>
+
+          {topupRequests.length > 0 && (
+            <div className="invite-sub-table">
+              <div className="invite-sub-table-title">
+                <ShieldCheck size={14} color="var(--accent-gold)" />
+                <span>Recent Deposit Requests</span>
               </div>
-              <div className="form-group" style={{ gap: '6px' }}>
-                <label>LKR Equivalent (1 USD = {rate})</label>
-                <div className="billing-lkr-box">{lkr(previewCents, rate)}</div>
+              <div className="invite-code-list">
+                {topupRequests.slice(0, 4).map(t => (
+                  <div className="invite-code-row" key={t.id}>
+                    <div className="invite-code-left">
+                      <code>{t.referenceCode}</code>
+                      <span>{t.method === 'bank_transfer' ? 'Bank Transfer' : 'Crypto'} · {usd(t.amountCents)}</span>
+                    </div>
+                    <span className={`status-badge ${t.status === 'approved' ? 'provisioned' : t.status === 'rejected' ? 'error' : 'pending'}`}>
+                      {t.status}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
-
-            <div className="billing-method-tabs">
-              <button
-                type="button"
-                className={`billing-method-btn ${topupMethod === 'bank_transfer' ? 'active' : ''}`}
-                onClick={() => setTopupMethod('bank_transfer')}
-              >
-                <Building2 size={14} /> Bank Transfer
-              </button>
-              <button
-                type="button"
-                className={`billing-method-btn ${topupMethod === 'crypto' ? 'active' : ''}`}
-                onClick={() => setTopupMethod('crypto')}
-              >
-                <Coins size={14} /> Crypto (USDT)
-              </button>
-              <button
-                type="button"
-                className={`billing-method-btn ${topupMethod === 'payhere' ? 'active' : ''}`}
-                onClick={() => setTopupMethod('payhere')}
-              >
-                <Banknote size={14} /> PayHere LKR
-              </button>
-              <button
-                type="button"
-                className={`billing-method-btn ${topupMethod === 'stripe' ? 'active' : ''}`}
-                onClick={() => setTopupMethod('stripe')}
-              >
-                <CreditCard size={14} /> Stripe Card
-              </button>
-            </div>
-
-            {topupMethod === 'bank_transfer' && (
-              <div className="billing-gateway-box">
-                <div className="billing-gateway-title">Sri Lanka Bank Transfer Details</div>
-                <div className="billing-bank-grid">
-                  <div><span>Bank</span><b>{bankCfg.bankName || 'Commercial Bank / HNB'}</b></div>
-                  <div><span>Account Name</span><b>{bankCfg.accountName || 'HelzerX Cloud Hosting'}</b></div>
-                  <div><span>Account No</span><b style={{ fontFamily: 'var(--font-mono)' }}>{bankCfg.accountNumber}</b></div>
-                  <div><span>Transfer Amount</span><b style={{ color: 'var(--accent-gold)' }}>{lkr(previewCents, rate)}</b></div>
-                </div>
-                <div className="invite-claim-grid" style={{ marginTop: '8px' }}>
-                  <div className="form-group" style={{ gap: '6px' }}>
-                    <label htmlFor="topup-ref">Bank Reference / Slip No.</label>
-                    <input
-                      id="topup-ref"
-                      type="text"
-                      placeholder="e.g. CEFTS-9941283"
-                      value={referenceCode}
-                      onChange={e => setReferenceCode(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="form-group" style={{ gap: '6px' }}>
-                    <label htmlFor="topup-sender">Sender Name</label>
-                    <input
-                      id="topup-sender"
-                      type="text"
-                      placeholder="Account holder name"
-                      value={senderName}
-                      onChange={e => setSenderName(e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="form-group" style={{ gap: '6px' }}>
-                  <label htmlFor="topup-note">Transfer Note / Branch (Optional)</label>
-                  <input
-                    id="topup-note"
-                    type="text"
-                    placeholder="Branch or date/time of transfer"
-                    value={topupNote}
-                    onChange={e => setTopupNote(e.target.value)}
-                  />
-                </div>
-                <button type="submit" className="btn-pill primary" disabled={busy}>
-                  <Check size={14} /> Submit Bank Slip For Approval
-                </button>
-              </div>
-            )}
-
-            {topupMethod === 'crypto' && (
-              <div className="billing-gateway-box">
-                <div className="billing-gateway-title">Crypto Deposit ({cryptoCfg.network || 'USDT TRC-20'})</div>
-                <div className="billing-bank-grid">
-                  <div><span>Network</span><b>{cryptoCfg.network || 'USDT TRC-20 / BEP-20'}</b></div>
-                  <div><span>Deposit Address</span><b style={{ fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>{cryptoCfg.address}</b></div>
-                  {cryptoCfg.binancePayId && <div><span>Binance Pay ID</span><b style={{ fontFamily: 'var(--font-mono)' }}>{cryptoCfg.binancePayId}</b></div>}
-                  <div><span>Amount (USDT)</span><b style={{ color: '#86efac' }}>{usd(previewCents)}</b></div>
-                </div>
-                <div className="invite-claim-grid" style={{ marginTop: '8px' }}>
-                  <div className="form-group" style={{ gap: '6px' }}>
-                    <label htmlFor="crypto-tx">Transaction Hash (TXID)</label>
-                    <input
-                      id="crypto-tx"
-                      type="text"
-                      placeholder="0x... or TRC20 TxHash"
-                      value={referenceCode}
-                      onChange={e => setReferenceCode(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="form-group" style={{ gap: '6px' }}>
-                    <label htmlFor="crypto-sender">Wallet / Binance Nickname</label>
-                    <input
-                      id="crypto-sender"
-                      type="text"
-                      placeholder="Sender label"
-                      value={senderName}
-                      onChange={e => setSenderName(e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
-                <button type="submit" className="btn-pill primary" disabled={busy}>
-                  <Check size={14} /> Submit Crypto Deposit Verification
-                </button>
-              </div>
-            )}
-
-            {topupMethod === 'payhere' && (
-              <div className="billing-gateway-box">
-                <div className="billing-gateway-title">PayHere Sri Lanka Instant Checkout</div>
-                <p className="invite-helper-text">
-                  Pay {lkr(previewCents, rate)} ({usd(previewCents)} USD) via Visa, MasterCard, Frimi, Genie, or eZ Cash with instant MD5-signed wallet crediting.
-                </p>
-                {!payhereEnabled && (
-                  <div className="invite-diagnostic-banner warn" style={{ padding: '10px 12px', fontSize: '11.5px' }}>
-                    <AlertTriangle size={15} style={{ flexShrink: 0 }} />
-                    <span>Add <code>PAYHERE_MERCHANT_ID</code> and <code>PAYHERE_MERCHANT_SECRET</code> in server <code>.env</code> to activate instant PayHere checkout, or use Bank Transfer right now.</span>
-                  </div>
-                )}
-                <button type="submit" className="btn-pill primary" disabled={busy || !payhereEnabled}>
-                  <ArrowUpRight size={14} /> {payhereEnabled ? `Pay ${lkr(previewCents, rate)} via PayHere` : 'PayHere Standby Mode'}
-                </button>
-              </div>
-            )}
-
-            {topupMethod === 'stripe' && (
-              <div className="billing-gateway-box">
-                <div className="billing-gateway-title">Stripe Global Card Checkout</div>
-                <p className="invite-helper-text">
-                  Instant credit via Visa, Mastercard, Apple Pay, or Google Pay. Verified automatically using signed Stripe webhooks.
-                </p>
-                {!stripeEnabled && (
-                  <div className="invite-diagnostic-banner warn" style={{ padding: '10px 12px', fontSize: '11.5px' }}>
-                    <AlertTriangle size={15} style={{ flexShrink: 0 }} />
-                    <span>Add <code>STRIPE_SECRET_KEY</code> &amp; <code>STRIPE_WEBHOOK_SECRET</code> in server <code>.env</code> to accept live card payments, or use Bank Transfer / Crypto.</span>
-                  </div>
-                )}
-                <button type="submit" className="btn-pill primary" disabled={busy || !stripeEnabled}>
-                  <ArrowUpRight size={14} /> {stripeEnabled ? `Pay ${usd(previewCents)} via Stripe` : 'Stripe Standby Mode'}
-                </button>
-              </div>
-            )}
-          </form>
+          )}
         </article>
 
         {/* Active Paid Subscriptions Card */}
@@ -445,29 +266,6 @@ export default function BillingCenter({
                   </div>
                 );
               })}
-            </div>
-          )}
-
-          {/* Pending Bank/Crypto Top-Up Verifications */}
-          {topupRequests.length > 0 && (
-            <div className="invite-sub-table">
-              <div className="invite-sub-table-title">
-                <ShieldCheck size={14} color="var(--accent-gold)" />
-                <span>Deposit Verification Queue</span>
-              </div>
-              <div className="invite-code-list">
-                {topupRequests.slice(0, 5).map(t => (
-                  <div className="invite-code-row" key={t.id}>
-                    <div className="invite-code-left">
-                      <code>{t.referenceCode}</code>
-                      <span>{t.method === 'bank_transfer' ? 'Bank Transfer' : 'Crypto'} · {usd(t.amountCents)}</span>
-                    </div>
-                    <span className={`status-badge ${t.status === 'approved' ? 'provisioned' : t.status === 'rejected' ? 'error' : 'pending'}`}>
-                      {t.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
         </article>
@@ -560,7 +358,7 @@ export default function BillingCenter({
                     {tx.id} · {tx.method} · {new Date(tx.createdAt).toLocaleString()}
                   </span>
                 </div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '14px', color: tx.direction === 'credit' ? '#86efac' : '#f5b041' }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '14px', color: tx.direction === 'credit' ? '#86efac' : '#f5b041', fontVariantNumeric: 'tabular-nums' }}>
                   {tx.direction === 'credit' ? '+' : '-'}{usd(tx.amountCents)}
                 </div>
               </div>

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { 
   Activity, ArrowRight, ArrowUpRight, Check, Copy, CreditCard, ExternalLink, 
-  FileText, Layers, LogOut, Menu, RefreshCw, Server, ShieldCheck, Users, 
+  FileText, Layers, LogOut, Menu, PlusCircle, RefreshCw, Server, ShieldCheck, Users, 
   Wallet, Zap, Lock, Coins, Terminal, HardDrive, Cpu, X, ChevronRight,
   Shield, Globe, Sparkles, Eye, EyeOff, Box, RotateCcw, KeyRound, Mail, ShieldAlert
 } from 'lucide-react';
@@ -11,6 +11,7 @@ import MinecraftDeployModal from './components/MinecraftDeployModal.jsx';
 import SecurityCenter, { evaluatePasswordStrength } from './components/SecurityCenter.jsx';
 import DiscordInviteHub from './components/DiscordInviteHub.jsx';
 import BillingCenter from './components/BillingCenter.jsx';
+import AddCreditsPage from './components/AddCreditsPage.jsx';
 import LegalModal from './components/LegalModal.jsx';
 import serviceMinecraftBg from './assets/images/service_minecraft_bg_1794585441648.jpg';
 import serviceLxcBg from './assets/images/service_lxc_bg_1794585442080.jpg';
@@ -82,6 +83,7 @@ export default function App() {
   const [boostCount, setBoostCount] = useState('1');
   const [hostingOptions, setHostingOptions] = useState([]);
   const [hostingProvisioning, setHostingProvisioning] = useState({ enabled: false, ready: false });
+  const [mcProvisioning, setMcProvisioning] = useState({ enabled: false, ready: false, configured: false, missing: [] });
   const [vpsDeploymentOptions, setVpsDeploymentOptions] = useState({ nodes: [], osOptions: [] });
   const [vpsModalPlan, setVpsModalPlan] = useState(null);
   const [mcModalPlan, setMcModalPlan] = useState(null);
@@ -93,7 +95,7 @@ export default function App() {
   const [deployCheckoutType, setDeployCheckoutType] = useState('hzl'); // 'hzl' | 'paid'
   const [generatedRootPassword, setGeneratedRootPassword] = useState('');
   const [hostingRequests, setHostingRequests] = useState([]);
-  const [activeTab, setActiveTab] = useState('deploy'); // 'deploy' | 'servers' | 'billing' | 'invites' | 'boosts' | 'security'
+  const [activeTab, setActiveTab] = useState('deploy'); // 'deploy' | 'servers' | 'billing' | 'credits' | 'invites' | 'boosts' | 'security'
   const [navDrawerOpen, setNavDrawerOpen] = useState(false);
   const [generatedPrivateKey, setGeneratedPrivateKey] = useState('');
   const [viewPublicMode, setViewPublicMode] = useState(false);
@@ -169,9 +171,10 @@ export default function App() {
           const hd = await hr.json();
           setHostingOptions(Array.isArray(hd.options) ? hd.options : []);
           setHostingProvisioning(hd.provisioning && typeof hd.provisioning === 'object' ? hd.provisioning : { enabled: false, ready: false });
+          setMcProvisioning(hd.pterodactyl && typeof hd.pterodactyl === 'object' ? hd.pterodactyl : { enabled: false, ready: false, configured: false, missing: [] });
           setVpsDeploymentOptions({ nodes: Array.isArray(hd.nodes) ? hd.nodes : [], osOptions: Array.isArray(hd.osOptions) ? hd.osOptions : [] });
-          if (Array.isArray(hd.mcEggs)) setMcEggs(hd.mcEggs);
-          if (Array.isArray(hd.mcNodes)) setMcNodes(hd.mcNodes);
+          setMcEggs(Array.isArray(hd.mcEggs) ? hd.mcEggs : []);
+          setMcNodes(Array.isArray(hd.mcNodes) ? hd.mcNodes : []);
         }
         if (rr.ok) {
           const rd = await rr.json();
@@ -200,7 +203,9 @@ export default function App() {
       .then(d => { if (d) setAuthProviders(d); })
       .catch(() => {});
 
-    if (window.location.hash === '#security') {
+    if (window.location.pathname === '/credits' || window.location.hash === '#credits') {
+      setActiveTab('credits');
+    } else if (window.location.hash === '#security') {
       setActiveTab('security');
     } else if (window.location.hash === '#invites') {
       setActiveTab('invites');
@@ -212,12 +217,31 @@ export default function App() {
       setActiveTab('billing');
     }
 
+    const handlePopState = () => {
+      if (window.location.pathname === '/credits' || window.location.hash === '#credits') {
+        setActiveTab('credits');
+      } else if (window.location.hash === '#billing') {
+        setActiveTab('billing');
+      } else if (window.location.hash === '#servers') {
+        setActiveTab('servers');
+      } else if (window.location.hash === '#invites') {
+        setActiveTab('invites');
+      } else if (window.location.hash === '#boosts') {
+        setActiveTab('boosts');
+      } else if (window.location.hash === '#security') {
+        setActiveTab('security');
+      } else {
+        setActiveTab('deploy');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+
     const p = new URLSearchParams(window.location.search);
     const status = p.get('login');
     const authErr = p.get('auth_error');
     const billingStatus = p.get('billing');
     if (billingStatus) {
-      setActiveTab('billing');
+      setActiveTab('credits');
       const billingMessages = {
         stripe_success: 'Stripe payment received! Your wallet credit updates automatically via verified webhook.',
         stripe_cancelled: 'Stripe checkout was cancelled.',
@@ -289,6 +313,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleEsc);
     return () => {
+      window.removeEventListener('popstate', handlePopState);
       window.removeEventListener('message', handleOAuthMessage);
       window.removeEventListener('keydown', handleEsc);
     };
@@ -559,14 +584,14 @@ export default function App() {
     }
   }
 
-  async function startPayhereTopup(amountUsd) {
+  async function startPayhereTopup({ amountUsd, phone, address, city }) {
     setBusy(true);
     try {
       const r = await fetch('/api/billing/topup/payhere', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amountUsd })
+        body: JSON.stringify({ amountUsd, phone, address, city })
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.actionUrl || !d.fields) {
@@ -933,7 +958,8 @@ export default function App() {
   const tabLabels = {
     deploy: 'Hosting Catalog',
     servers: `My Containers & Servers (${hostingRequests.length})`,
-    billing: 'Billing & Wallet',
+    billing: 'Billing & Subscriptions',
+    credits: 'Add Credits',
     invites: 'Invite & Referral Hub',
     boosts: 'Boost Claim Submission',
     security: 'Security & 2FA'
@@ -941,10 +967,21 @@ export default function App() {
 
   function selectConsoleTab(tab) {
     setActiveTab(tab);
-    if (tab === 'security') {
-      loadSecurityInfo();
-    } else if (tab === 'billing') {
+    if (tab === 'credits') {
+      if (window.location.pathname !== '/credits') {
+        window.history.pushState({}, '', '/credits#credits');
+      }
       loadBillingData();
+    } else {
+      const targetUrl = tab === 'deploy' ? '/#deploy' : `/#${tab}`;
+      if (window.location.pathname !== '/' || window.location.hash !== `#${tab}`) {
+        window.history.pushState({}, '', targetUrl);
+      }
+      if (tab === 'security') {
+        loadSecurityInfo();
+      } else if (tab === 'billing') {
+        loadBillingData();
+      }
     }
     setNavDrawerOpen(false);
   }
@@ -1099,8 +1136,18 @@ export default function App() {
                 onClick={() => selectConsoleTab('billing')}
               >
                 <span className="side-drawer-item-icon"><Wallet size={16} /></span>
-                <span className="side-drawer-item-text">Billing &amp; Wallet</span>
+                <span className="side-drawer-item-text">Billing &amp; Subscriptions</span>
                 <span className="side-drawer-count" style={{ color: '#86efac' }}>{usd(walletCents)}</span>
+              </button>
+
+              <button
+                type="button"
+                className={`side-drawer-item ${activeTab === 'credits' ? 'active' : ''}`}
+                onClick={() => selectConsoleTab('credits')}
+              >
+                <span className="side-drawer-item-icon"><PlusCircle size={16} /></span>
+                <span className="side-drawer-item-text">Add Credits</span>
+                <ChevronRight size={14} className="side-drawer-chevron" />
               </button>
 
               <button
@@ -1221,10 +1268,10 @@ export default function App() {
                 <span>Wallet: <strong style={{ color: '#86efac' }}>{usd(walletCents)}</strong> ({lkr(walletCents, usdToLkrRate)})</span>
                 <button
                   type="button"
-                  onClick={() => selectConsoleTab('billing')}
+                  onClick={() => selectConsoleTab('credits')}
                   style={{ background: 'none', border: 'none', color: 'var(--accent-gold)', cursor: 'pointer', fontSize: '11px', fontWeight: 700 }}
                 >
-                  Top Up →
+                  Add Credits →
                 </button>
               </div>
             </div>
@@ -1272,10 +1319,10 @@ export default function App() {
                     <span className="stat-box-sub">HZL Balance: <strong style={{ color: 'var(--accent-gold)' }}>{money(rewards?.balance || 0)} HZL</strong></span>
                     <span className="stat-box-sub">Cash Wallet: <strong style={{ color: '#86efac' }}>{usd(walletCents)}</strong> ({lkr(walletCents, usdToLkrRate)})</span>
                     <span className="stat-box-sub" role="status" style={{ color: hostingProvisioning.ready ? '#43d17a' : '#e6b45c' }}>
-                      {hostingProvisioning.ready ? 'Automatic VPS engine: Online' : 'Proxmox VPS: Standby'}
+                      {hostingProvisioning.ready ? 'Proxmox VPS: Online' : 'Proxmox VPS: Standby'}
                     </span>
-                    <span className="stat-box-sub" role="status" style={{ color: '#c084fc' }}>
-                      Pterodactyl Minecraft: Ready
+                    <span className="stat-box-sub" role="status" style={{ color: mcProvisioning.ready ? '#c084fc' : '#e6b45c' }}>
+                      {mcProvisioning.ready ? 'Pterodactyl Minecraft: Online' : 'Pterodactyl Minecraft: Standby'}
                     </span>
                   </div>
 
@@ -1375,7 +1422,7 @@ export default function App() {
                       const cyclePriceCents = getPlanCyclePriceCents(plan, catalogCycle);
                       const canAffordHzl = Number(rewards?.balance || 0) >= Number(plan.cost);
                       const canAffordPaid = walletCents >= cyclePriceCents;
-                      const engineReady = isMc || hostingProvisioning.ready;
+                      const engineReady = isMc ? mcProvisioning.ready : hostingProvisioning.ready;
 
                       return (
                         <article className="plan-card" key={plan.id} onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave} style={isMc ? { borderColor: 'rgba(168, 85, 247, 0.25)' } : {}}>
@@ -1597,7 +1644,7 @@ export default function App() {
             </section>
           )}
 
-          {/* TAB 2B: BILLING, WALLET & SUBSCRIPTIONS */}
+          {/* TAB 2B: BILLING, SUBSCRIPTIONS & INVOICES */}
           {activeTab === 'billing' && (
             <BillingCenter
               me={me}
@@ -1607,13 +1654,28 @@ export default function App() {
               hostingOptions={hostingOptions}
               busy={busy}
               onRefreshBilling={loadData}
-              onSubmitManualTopup={submitManualTopup}
-              onStartStripeTopup={startStripeTopup}
-              onStartPayhereTopup={startPayhereTopup}
+              onOpenAddCredits={() => selectConsoleTab('credits')}
               onRenewServer={renewPaidServer}
               onToggleAutoRenew={toggleServerAutoRenew}
               onUpgradeServer={upgradePaidServer}
               onGoToDeploy={() => { setCatalogPaymentFilter('paid'); selectConsoleTab('deploy'); }}
+            />
+          )}
+
+          {/* DEDICATED PAGE: ADD CREDITS */}
+          {activeTab === 'credits' && (
+            <AddCreditsPage
+              me={me}
+              rewards={rewards}
+              billing={billing}
+              busy={busy}
+              onRefreshBilling={loadData}
+              onSubmitManualTopup={submitManualTopup}
+              onStartStripeTopup={startStripeTopup}
+              onStartPayhereTopup={startPayhereTopup}
+              onBackToBilling={() => selectConsoleTab('billing')}
+              onGoToDeploy={() => { setCatalogPaymentFilter('paid'); selectConsoleTab('deploy'); }}
+              onGoToSecurity={() => selectConsoleTab('security')}
               onToast={setToast}
             />
           )}
@@ -2259,7 +2321,7 @@ export default function App() {
         onClose={() => setVpsModalPlan(null)}
         onLoadTemplates={loadVpsTemplates}
         onValidatePromo={validatePromoForModal}
-        onOpenBilling={() => selectConsoleTab('billing')}
+        onOpenBilling={() => selectConsoleTab('credits')}
         onDeploy={config => executeHostingRequest(vpsModalPlan, config)}
       />
       <MinecraftDeployModal
@@ -2274,7 +2336,7 @@ export default function App() {
         busy={busy}
         onClose={() => setMcModalPlan(null)}
         onValidatePromo={validatePromoForModal}
-        onOpenBilling={() => selectConsoleTab('billing')}
+        onOpenBilling={() => selectConsoleTab('credits')}
         onDeploy={config => executeHostingRequest(mcModalPlan, config)}
       />
       <LegalModal docKey={legalDoc} onClose={() => setLegalDoc(null)} />

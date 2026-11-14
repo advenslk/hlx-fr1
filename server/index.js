@@ -1275,8 +1275,14 @@ app.get('/api/hosting-options',auth,async(_req,res)=>{
  const options=data.plans.filter(x=>x.enabled!==false).map(normalizePlanBilling);
  const readiness=proxmoxReadiness();
  const pteroReadiness=pterodactylReadiness();
- const mcEggs=await listMinecraftEggs();
- const mcNodes=await listMinecraftNodes();
+ let mcEggs=[],mcNodes=[],mcError='';
+ if(pteroReadiness.ready){
+  try{
+   [mcEggs,mcNodes]=await Promise.all([listMinecraftEggs(),listMinecraftNodes()]);
+  }catch(error){
+   mcError=String(error?.message||'Could not read Pterodactyl panel catalog').slice(0,300);
+  }
+ }
  res.set('Cache-Control','no-store');
  res.json({
   options:options.map(({id,service,name,cost,billingMode,paidPricing,description,proxmox,pterodactyl})=>({
@@ -1287,7 +1293,7 @@ app.get('/api/hosting-options',auth,async(_req,res)=>{
   nodes:configuredVpsNodes(),
   osOptions:configuredVpsOs().map(({id,label,surcharge})=>({id,label,surcharge})),
   provisioning:{enabled:readiness.enabled,ready:readiness.ready},
-  pterodactyl:{enabled:pteroReadiness.enabled,ready:pteroReadiness.ready,panelUrl:pteroReadiness.panelUrl,mode:pteroReadiness.mode},
+  pterodactyl:{enabled:pteroReadiness.enabled,ready:pteroReadiness.ready,configured:pteroReadiness.configured,missing:pteroReadiness.missing,panelUrl:pteroReadiness.panelUrl,...(mcError?{error:mcError}:{})},
   mcEggs,
   mcNodes,
   usdToLkrRate:getUsdToLkrRate(process.env)
@@ -1477,8 +1483,15 @@ app.post('/api/hosting-requests',auth,adminMutationOrigin,async(req,res)=>{
   if(!displayName||displayName.length<2||displayName.length>30||!/^[a-z0-9](?:[a-z0-9_-]{0,28}[a-z0-9])?$/i.test(displayName)){
    return res.status(400).json({error:'Minecraft server name must be 2–30 letters, numbers, hyphens or underscores.'});
   }
-  const eggId=String(req.body?.eggId||'paper-1.20');
-  const mcNodeId=String(req.body?.nodeId||'hlx-mc-asia-01');
+  const ptero=pterodactylReadiness();
+  if(!ptero.ready){
+   return res.status(503).json({error:'Automatic Minecraft provisioning is not configured on this server yet.',missing:ptero.missing});
+  }
+  const eggId=String(req.body?.eggId||'').trim();
+  const mcNodeId=String(req.body?.nodeId||'').trim();
+  if(!eggId||!mcNodeId){
+   return res.status(400).json({error:'Select a valid Minecraft software edition (egg) and Pterodactyl node.'});
+  }
 
   // Reserve HZL
   u.balance-=effectiveCost;
@@ -1488,7 +1501,7 @@ app.post('/api/hosting-requests',auth,adminMutationOrigin,async(req,res)=>{
   writeData();
 
   try{
-   const created=await provisionMinecraftServer({requestId:request.id,plan:option,user:req.session.user,serverName:displayName,eggId,nodeId:mcNodeId});
+   const created=await provisionMinecraftServer({requestId:request.id,plan:option,user:{...req.session.user,email:u.email||req.session.user.email},serverName:displayName,eggId,nodeId:mcNodeId});
    request.status='provisioned';
    request.provisioningStatus='server-running';
    request.identifier=created.identifier;
@@ -1624,6 +1637,13 @@ app.post('/api/billing/topup/manual',auth,adminMutationOrigin,(req,res)=>{
   ensureBillingCollections(data);
   const method=String(req.body?.method||'');
   if(!['bank_transfer','crypto'].includes(method))return res.status(400).json({error:'Method must be bank_transfer or crypto.'});
+  const cfg=getBillingConfig(process.env);
+  if(method==='bank_transfer'&&!cfg.gateways.bankTransfer.enabled){
+    return res.status(503).json({error:'Bank Transfer gateway is not configured on the server yet (set BILLING_BANK_NAME, BILLING_BANK_ACCOUNT_NAME, and BILLING_BANK_ACCOUNT_NUMBER).'});
+  }
+  if(method==='crypto'&&!cfg.gateways.crypto.enabled){
+    return res.status(503).json({error:'Crypto payment gateway is not configured on the server yet (set BILLING_CRYPTO_NETWORK + BILLING_CRYPTO_ADDRESS or BILLING_CRYPTO_BINANCE_ID).'});
+  }
   const amountUsd=Number(req.body?.amountUsd);
   if(!Number.isFinite(amountUsd)||amountUsd<1||amountUsd>2500)return res.status(400).json({error:'Top-up amount must be between $1.00 and $2,500.00 USD.'});
   const amountCents=Math.round(amountUsd*100);
@@ -1697,8 +1717,8 @@ app.post('/api/billing/topup/stripe',auth,adminMutationOrigin,async(req,res)=>{
       'line_items[0][price_data][product_data][name]':'HelzerX Cloud Wallet Credit',
       'line_items[0][price_data][unit_amount]':String(amountCents),
       'line_items[0][quantity]':'1',
-      success_url:`${baseUrl}/?billing=stripe_success#billing`,
-      cancel_url:`${baseUrl}/?billing=stripe_cancelled#billing`,
+      success_url:`${baseUrl}/credits?billing=stripe_success#credits`,
+      cancel_url:`${baseUrl}/credits?billing=stripe_cancelled#credits`,
       client_reference_id:invoice.id,
       ...(u.email?{customer_email:u.email}:{}),
       'metadata[userId]':userId,
@@ -1726,15 +1746,23 @@ app.post('/api/billing/topup/stripe',auth,adminMutationOrigin,async(req,res)=>{
 app.post('/api/billing/topup/payhere',auth,adminMutationOrigin,(req,res)=>{
   const merchantId=String(process.env.PAYHERE_MERCHANT_ID||'').trim();
   const merchantSecret=String(process.env.PAYHERE_MERCHANT_SECRET||'').trim();
-  if(!merchantId||!merchantSecret)return res.status(503).json({error:'PayHere LKR gateway is not configured on the server yet (missing PAYHERE_MERCHANT_ID / PAYHERE_MERCHANT_SECRET). Use Bank Transfer top-up.'});
+  if(!merchantId||!merchantSecret)return res.status(503).json({error:'PayHere LKR gateway is not configured on the server yet (missing PAYHERE_MERCHANT_ID / PAYHERE_MERCHANT_SECRET).'});
   const amountUsd=Number(req.body?.amountUsd);
   if(!Number.isFinite(amountUsd)||amountUsd<1||amountUsd>2500)return res.status(400).json({error:'Top-up amount must be between $1.00 and $2,500.00 USD.'});
+  const phone=String(req.body?.phone||'').trim();
+  const address=String(req.body?.address||'').trim();
+  const city=String(req.body?.city||'').trim();
+  if(!/^\+?[0-9\s-]{8,20}$/.test(phone))return res.status(400).json({error:'Enter a valid billing phone number (8–20 digits) for PayHere verification.'});
+  if(address.length<4||address.length>150)return res.status(400).json({error:'Enter your real billing street address (4–150 chars) for PayHere checkout.'});
+  if(city.length<2||city.length>60)return res.status(400).json({error:'Enter your billing city (2–60 chars) for PayHere checkout.'});
+  const userId=req.session.user.id;
+  const u=ensureUser(userId);
+  const customerEmail=String(u.email||'').trim();
+  if(!customerEmail)return res.status(400).json({error:'An account email address is required for PayHere checkout. Connect Gmail/Google or update your profile first.'});
   const amountCents=Math.round(amountUsd*100);
   const rate=getUsdToLkrRate(process.env);
   const amountLkr=Number(((amountCents/100)*rate).toFixed(2));
   const amountFormatted=amountLkr.toFixed(2);
-  const userId=req.session.user.id;
-  const u=ensureUser(userId);
   const baseUrl=resolveAppBaseUrl(req);
   const invoice=createInvoice({
     data,
@@ -1755,19 +1783,19 @@ app.post('/api/billing/topup/payhere',auth,adminMutationOrigin,(req,res)=>{
     actionUrl:sandbox?'https://sandbox.payhere.lk/pay/checkout':'https://www.payhere.lk/pay/checkout',
     fields:{
       merchant_id:merchantId,
-      return_url:`${baseUrl}/?billing=payhere_success#billing`,
-      cancel_url:`${baseUrl}/?billing=payhere_cancelled#billing`,
+      return_url:`${baseUrl}/credits?billing=payhere_success#credits`,
+      cancel_url:`${baseUrl}/credits?billing=payhere_cancelled#credits`,
       notify_url:`${baseUrl}/api/billing/webhooks/payhere`,
       order_id:invoice.id,
       items:`HelzerX Cloud Wallet Top-Up ($${amountUsd.toFixed(2)})`,
       currency:'LKR',
       amount:amountFormatted,
-      first_name:(u.global_name||u.username||'HelzerX').split(' ')[0].slice(0,40),
-      last_name:(u.global_name||u.username||'Member').split(' ').slice(1).join(' ').slice(0,40)||'User',
-      email:u.email||'billing@helzerx.cyou',
-      phone:'0770000000',
-      address:'Colombo',
-      city:'Colombo',
+      first_name:(u.global_name||u.username||'Member').split(' ')[0].slice(0,40),
+      last_name:(u.global_name||u.username||'Account').split(' ').slice(1).join(' ').slice(0,40)||'Account',
+      email:customerEmail,
+      phone,
+      address,
+      city,
       country:'Sri Lanka',
       custom_1:userId,
       custom_2:String(amountCents),
@@ -1876,6 +1904,11 @@ app.post('/api/billing/checkout',auth,adminMutationOrigin,async(req,res)=>{
     if(!displayName||displayName.length<2||displayName.length>30||!/^[a-z0-9](?:[a-z0-9_-]{0,28}[a-z0-9])?$/i.test(displayName)){
       return res.status(400).json({error:'Minecraft server name must be 2–30 letters, numbers, hyphens or underscores.'});
     }
+    const ptero=pterodactylReadiness();
+    if(!ptero.ready)return res.status(503).json({error:'Automatic Pterodactyl provisioning is not ready yet.',missing:ptero.missing});
+    if(!String(req.body?.eggId||'').trim()||!String(req.body?.nodeId||'').trim()){
+      return res.status(400).json({error:'Select a valid Minecraft software edition (egg) and Pterodactyl node.'});
+    }
   } else {
     return res.status(400).json({error:'Unsupported service type for paid checkout.'});
   }
@@ -1956,10 +1989,10 @@ app.post('/api/billing/checkout',auth,adminMutationOrigin,async(req,res)=>{
   writeData();
 
   if(service==='minecraft'){
-    const eggId=String(req.body?.eggId||'paper-1.20');
-    const mcNodeId=String(req.body?.nodeId||'hlx-mc-asia-01');
+    const eggId=String(req.body?.eggId||'').trim();
+    const mcNodeId=String(req.body?.nodeId||'').trim();
     try{
-      const created=await provisionMinecraftServer({requestId:request.id,plan:option,user:req.session.user,serverName:displayName,eggId,nodeId:mcNodeId});
+      const created=await provisionMinecraftServer({requestId:request.id,plan:option,user:{...req.session.user,email:u.email||req.session.user.email},serverName:displayName,eggId,nodeId:mcNodeId});
       request.status='provisioned';request.provisioningStatus='server-running';
       request.identifier=created.identifier;request.pterodactylId=created.id;
       request.serverIp=created.ip;request.serverPort=created.port;

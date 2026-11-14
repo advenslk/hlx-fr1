@@ -149,21 +149,32 @@ export function getBillingConfig(env = process.env) {
   const payhereConfigured = Boolean(payhereMerchantId && payhereSecret);
   const payhereSandbox = String(env.PAYHERE_SANDBOX || 'true').toLowerCase() !== 'false';
 
+  const bankName = String(env.BILLING_BANK_NAME || '').trim();
+  const accountName = String(env.BILLING_BANK_ACCOUNT_NAME || '').trim();
+  const accountNumber = String(env.BILLING_BANK_ACCOUNT_NUMBER || '').trim();
+  const branch = String(env.BILLING_BANK_BRANCH || '').trim();
+  const bankConfigured = Boolean(bankName && accountName && accountNumber);
+
   const bankTransfer = {
-    enabled: true,
-    bankName: String(env.BILLING_BANK_NAME || 'Commercial Bank / Hatton National Bank (Sri Lanka)').trim(),
-    accountName: String(env.BILLING_BANK_ACCOUNT_NAME || 'HelzerX Cloud Hosting').trim(),
-    accountNumber: String(env.BILLING_BANK_ACCOUNT_NUMBER || 'Configured via BILLING_BANK_ACCOUNT_NUMBER (Contact Support for Slip)').trim(),
-    branch: String(env.BILLING_BANK_BRANCH || 'Colombo / Digital Clearing').trim(),
-    configured: Boolean(String(env.BILLING_BANK_ACCOUNT_NUMBER || '').trim())
+    enabled: bankConfigured,
+    configured: bankConfigured,
+    bankName,
+    accountName,
+    accountNumber,
+    branch
   };
 
+  const cryptoNetwork = String(env.BILLING_CRYPTO_NETWORK || '').trim();
+  const cryptoAddress = String(env.BILLING_CRYPTO_ADDRESS || '').trim();
+  const binancePayId = String(env.BILLING_CRYPTO_BINANCE_ID || '').trim();
+  const cryptoConfigured = Boolean((cryptoNetwork && cryptoAddress) || binancePayId);
+
   const cryptoPayment = {
-    enabled: true,
-    network: String(env.BILLING_CRYPTO_NETWORK || 'USDT (TRC-20 / BEP-20) & Binance Pay').trim(),
-    address: String(env.BILLING_CRYPTO_ADDRESS || 'Configured via BILLING_CRYPTO_ADDRESS').trim(),
-    binancePayId: String(env.BILLING_CRYPTO_BINANCE_ID || '').trim(),
-    configured: Boolean(String(env.BILLING_CRYPTO_ADDRESS || '').trim() || String(env.BILLING_CRYPTO_BINANCE_ID || '').trim())
+    enabled: cryptoConfigured,
+    configured: cryptoConfigured,
+    network: cryptoNetwork,
+    address: cryptoAddress,
+    binancePayId
   };
 
   return {
