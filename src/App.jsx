@@ -1257,54 +1257,66 @@ export default function App() {
           </section>
 
           {/* KPI Stats Strip */}
-          <section className="stats-grid" aria-label="Account Overview Stats">
-            <div className="stat-box highlight" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
-              <div className="stat-box-label">
-                <span>Balances (HZL &amp; USD)</span>
-                <Coins size={14} color="var(--accent-gold)" />
-              </div>
-              <div className="stat-box-num">{money(rewards?.balance || 0)} <small style={{ fontSize: '14px', color: 'var(--accent-gold)' }}>HZL</small></div>
-              <div className="stat-box-sub" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-                <span>Wallet: <strong style={{ color: '#86efac' }}>{usd(walletCents)}</strong> ({lkr(walletCents, usdToLkrRate)})</span>
-                <button
-                  type="button"
-                  onClick={() => selectConsoleTab('credits')}
-                  style={{ background: 'none', border: 'none', color: 'var(--accent-gold)', cursor: 'pointer', fontSize: '11px', fontWeight: 700 }}
-                >
-                  Add Credits →
-                </button>
-              </div>
-            </div>
+          {(() => {
+            const showFreePerksStats =
+              activeTab === 'invites' ||
+              activeTab === 'boosts' ||
+              (activeTab === 'deploy' && catalogPaymentFilter === 'hzl');
+            return (
+              <section className="stats-grid" aria-label="Account Overview Stats">
+                <div className="stat-box highlight" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
+                  <div className="stat-box-label">
+                    <span>Balances (HZL &amp; USD)</span>
+                    <Coins size={14} color="var(--accent-gold)" />
+                  </div>
+                  <div className="stat-box-num">{money(rewards?.balance || 0)} <small style={{ fontSize: '14px', color: 'var(--accent-gold)' }}>HZL</small></div>
+                  <div className="stat-box-sub" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+                    <span>Wallet: <strong style={{ color: '#86efac' }}>{usd(walletCents)}</strong> ({lkr(walletCents, usdToLkrRate)})</span>
+                    <button
+                      type="button"
+                      onClick={() => selectConsoleTab('credits')}
+                      style={{ background: 'none', border: 'none', color: 'var(--accent-gold)', cursor: 'pointer', fontSize: '11px', fontWeight: 700 }}
+                    >
+                      Add Credits →
+                    </button>
+                  </div>
+                </div>
 
-            <div className="stat-box" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
-              <div className="stat-box-label">
-                <span>Verified Invites</span>
-                <Users size={14} />
-              </div>
-              <div className="stat-box-num">{money(invite?.verifiedInvites ?? rewards?.verifiedInvites ?? 0)}</div>
-              <div className="stat-box-sub">
-                {invite?.pendingInvites ? `${invite.pendingInvites} pending review` : 'All claims verified'}
-              </div>
-            </div>
+                {showFreePerksStats && (
+                  <>
+                    <div className="stat-box" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
+                      <div className="stat-box-label">
+                        <span>Verified Invites</span>
+                        <Users size={14} />
+                      </div>
+                      <div className="stat-box-num">{money(invite?.verifiedInvites ?? rewards?.verifiedInvites ?? 0)}</div>
+                      <div className="stat-box-sub">
+                        {invite?.pendingInvites ? `${invite.pendingInvites} pending review` : 'All claims verified'}
+                      </div>
+                    </div>
 
-            <div className="stat-box" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
-              <div className="stat-box-label">
-                <span>Server Boosts</span>
-                <Zap size={14} />
-              </div>
-              <div className="stat-box-num">{money(rewards?.activeBoosts || 0)}</div>
-              <div className="stat-box-sub">Active community boosts</div>
-            </div>
+                    <div className="stat-box" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
+                      <div className="stat-box-label">
+                        <span>Server Boosts</span>
+                        <Zap size={14} />
+                      </div>
+                      <div className="stat-box-num">{money(rewards?.activeBoosts || 0)}</div>
+                      <div className="stat-box-sub">Active community boosts</div>
+                    </div>
+                  </>
+                )}
 
-            <div className="stat-box" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
-              <div className="stat-box-label">
-                <span>Active Servers</span>
-                <Server size={14} />
-              </div>
-              <div className="stat-box-num">{hostingRequests.length}</div>
-              <div className="stat-box-sub">Proxmox LXC & Minecraft</div>
-            </div>
-          </section>
+                <div className="stat-box" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
+                  <div className="stat-box-label">
+                    <span>Active Servers</span>
+                    <Server size={14} />
+                  </div>
+                  <div className="stat-box-num">{hostingRequests.length}</div>
+                  <div className="stat-box-sub">Proxmox LXC & Minecraft</div>
+                </div>
+              </section>
+            );
+          })()}
 
           {/* TAB 1: DEPLOY HOSTING CATALOG */}
           {activeTab === 'deploy' && (
