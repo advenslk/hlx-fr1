@@ -3,11 +3,12 @@ import {
   Activity, ArrowRight, ArrowUpRight, Check, Copy, ExternalLink, 
   Layers, LogOut, RefreshCw, Server, ShieldCheck, Users, 
   Wallet, Zap, Lock, Coins, Terminal, HardDrive, Cpu, X, ChevronRight,
-  Shield, Globe, Sparkles, Eye, EyeOff, Box, RotateCcw
+  Shield, Globe, Sparkles, Eye, EyeOff, Box, RotateCcw, KeyRound, Mail, ShieldAlert
 } from 'lucide-react';
 import ThreeHeroCanvas from './components/ThreeHeroCanvas.jsx';
 import VpsDeployModal from './components/VpsDeployModal.jsx';
 import MinecraftDeployModal from './components/MinecraftDeployModal.jsx';
+import SecurityCenter, { evaluatePasswordStrength } from './components/SecurityCenter.jsx';
 import serviceMinecraftBg from './assets/images/service_minecraft_bg_1794585441648.jpg';
 import serviceLxcBg from './assets/images/service_lxc_bg_1794585442080.jpg';
 import serviceLedgerBg from './assets/images/service_ledger_bg_1794585442923.jpg';
@@ -43,10 +44,13 @@ function DiscordIcon({ size = 18 }) {
   );
 }
 
-function GithubIcon({ size = 18 }) {
+function GoogleIcon({ size = 18 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-      <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#EA4335" d="M12 10.2v3.9h5.4c-.2 1.2-1.4 3.6-5.4 3.6-3.2 0-5.9-2.7-5.9-6s2.7-6 5.9-6c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.7 3.1 14.6 2 12 2 6.5 2 2 6.5 2 12s4.5 10 10 10c5.8 0 9.6-4.1 9.6-9.8 0-.7-.1-1.3-.2-2H12z" />
+      <path fill="#34A853" d="M3.2 7.3l3.2 2.4C7.3 7.5 9.4 6 12 6c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.7 3.1 14.6 2 12 2 8.1 2 4.8 4.2 3.2 7.3z" />
+      <path fill="#FBBC05" d="M12 22c2.6 0 4.8-.9 6.4-2.4l-3-2.5c-.8.6-1.9 1-3.4 1-2.6 0-4.8-1.7-5.6-4.1l-3.3 2.5C4.7 19.7 8.1 22 12 22z" />
+      <path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.3-.2-2H12v3.9h5.4c-.3 1.3-1 2.4-2 3.1l3 2.5c1.8-1.6 3.2-4.1 3.2-7.5z" />
     </svg>
   );
 }
@@ -69,21 +73,39 @@ export default function App() {
   const [catalogFilter, setCatalogFilter] = useState('all'); // 'all' | 'lxc' | 'minecraft'
   const [generatedRootPassword, setGeneratedRootPassword] = useState('');
   const [hostingRequests, setHostingRequests] = useState([]);
-  const [activeTab, setActiveTab] = useState('deploy'); // 'deploy' | 'servers' | 'invites' | 'boosts'
+  const [activeTab, setActiveTab] = useState('deploy'); // 'deploy' | 'servers' | 'invites' | 'boosts' | 'security'
   const [generatedPrivateKey, setGeneratedPrivateKey] = useState('');
   const [viewPublicMode, setViewPublicMode] = useState(false);
   const [use3DCanvas, setUse3DCanvas] = useState(true);
 
-  // Split Auth Modal State (Matching uploaded image)
+  // Split Auth Modal & Security State
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState('signup'); // 'signup' | 'login'
+  const [authStep, setAuthStep] = useState('form'); // 'form' | '2fa'
   const [authFirstName, setAuthFirstName] = useState('');
   const [authLastName, setAuthLastName] = useState('');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
+  const [authConfirmPassword, setAuthConfirmPassword] = useState('');
+  const [authTwoFactorCode, setAuthTwoFactorCode] = useState('');
+  const [authEmailHint, setAuthEmailHint] = useState('');
   const [authReferral, setAuthReferral] = useState(referralParam || '');
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [authInfo, setAuthInfo] = useState('');
+  const [authProviders, setAuthProviders] = useState({ googleConfigured: false, discordConfigured: false, emailAuthEnabled: true });
+  const [securityInfo, setSecurityInfo] = useState(null);
+
+  async function loadSecurityInfo() {
+    try {
+      const r = await fetch('/api/auth/security', { credentials: 'same-origin', cache: 'no-store' });
+      if (r.ok) {
+        setSecurityInfo(await r.json());
+      }
+    } catch {
+      // ignore transient error
+    }
+  }
 
   async function loadData() {
     setLoading(true);
@@ -92,6 +114,7 @@ export default function App() {
       if (!r.ok) {
         setMe(null);
         setRewards(null);
+        setSecurityInfo(null);
         return;
       }
       const d = await r.json();
@@ -99,10 +122,11 @@ export default function App() {
       setRewards(d.rewards);
 
       try {
-        const [ir, hr, rr] = await Promise.all([
+        const [ir, hr, rr, sr] = await Promise.all([
           fetch('/api/invites', { credentials: 'same-origin', cache: 'no-store' }),
           fetch('/api/hosting-options', { credentials: 'same-origin', cache: 'no-store' }),
-          fetch('/api/hosting-requests', { credentials: 'same-origin', cache: 'no-store' })
+          fetch('/api/hosting-requests', { credentials: 'same-origin', cache: 'no-store' }),
+          fetch('/api/auth/security', { credentials: 'same-origin', cache: 'no-store' })
         ]);
         if (ir.ok) setInvite(await ir.json());
         if (hr.ok) {
@@ -117,6 +141,9 @@ export default function App() {
           const rd = await rr.json();
           setHostingRequests(Array.isArray(rd.requests) ? rd.requests : []);
         }
+        if (sr.ok) {
+          setSecurityInfo(await sr.json());
+        }
       } catch (err) {
         console.error('Error loading sub-resources:', err);
       }
@@ -129,26 +156,77 @@ export default function App() {
 
   useEffect(() => {
     loadData();
+    fetch('/api/auth/providers', { credentials: 'same-origin', cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d) setAuthProviders(d); })
+      .catch(() => {});
+
+    if (window.location.hash === '#security') {
+      setActiveTab('security');
+    }
+
     const p = new URLSearchParams(window.location.search);
     const status = p.get('login');
     if (status) {
-      const messages = {
-        success: 'Account connected successfully. Welcome to your HelzerX Cloud panel.',
-        cancelled: 'Login was cancelled.',
-        failed: 'Login failed. Please verify credentials.',
-        'join-discord': 'Please join the official Discord server to verify community status.'
-      };
-      setToast(messages[status] || '');
+      if (status === '2fa') {
+        setAuthMode('login');
+        setAuthStep('2fa');
+        setAuthModalOpen(true);
+      } else if (status === 'required') {
+        setAuthMode('login');
+        setAuthStep('form');
+        setAuthModalOpen(true);
+      } else {
+        const messages = {
+          success: 'Account connected successfully. Welcome to your HelzerX Cloud panel.',
+          cancelled: 'Login was cancelled.',
+          failed: 'Login failed. Please verify credentials.',
+          'join-discord': 'Please join the official Discord server to verify community status.'
+        };
+        setToast(messages[status] || '');
+      }
       window.history.replaceState({}, '', window.location.pathname);
     }
+
+    const handleOAuthMessage = (event) => {
+      const origin = event.origin || '';
+      if (origin !== window.location.origin && !origin.endsWith('.run.app') && !origin.includes('localhost')) {
+        return;
+      }
+      const msg = event.data;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type === 'OAUTH_AUTH_SUCCESS') {
+        setAuthModalOpen(false);
+        setAuthStep('form');
+        setAuthError('');
+        setToast('Authenticated securely. Welcome to HelzerX Cloud!');
+        loadData();
+      } else if (msg.type === 'OAUTH_2FA_REQUIRED') {
+        setAuthMode('login');
+        setAuthStep('2fa');
+        setAuthError('');
+        setAuthInfo('Verify your 6-digit authenticator code to complete sign-in.');
+        setAuthModalOpen(true);
+      } else if (msg.type === 'OAUTH_JOIN_DISCORD' || msg.type === 'OAUTH_AUTH_ERROR') {
+        setAuthError(msg.message || 'Authentication could not be completed.');
+      }
+    };
+    window.addEventListener('message', handleOAuthMessage);
+    return () => window.removeEventListener('message', handleOAuthMessage);
   }, []);
 
   async function logout() {
     setBusy(true);
     try {
-      await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
       setMe(null);
       setRewards(null);
+      setSecurityInfo(null);
       setToast('You have been signed out.');
     } finally {
       setBusy(false);
@@ -262,12 +340,76 @@ export default function App() {
     }
   }
 
-  // Real Email & Password Registration and Login
+  function openAuthModal(mode = 'signup') {
+    setAuthMode(mode);
+    setAuthStep('form');
+    setAuthError('');
+    setAuthInfo('');
+    setAuthTwoFactorCode('');
+    setAuthModalOpen(true);
+  }
+
+  async function handleGoogleAuth() {
+    setAuthError('');
+    setAuthInfo('');
+    try {
+      const q = authReferral ? '?ref=' + encodeURIComponent(authReferral) : '';
+      const r = await fetch('/api/auth/google/url' + q, { credentials: 'same-origin', cache: 'no-store' });
+      const d = await r.json();
+      if (!d.configured || !d.url) {
+        setAuthInfo('Direct Google 1-click OAuth is awaiting server GOOGLE_CLIENT_ID setup — use your @gmail.com address below to create or log into your secured HelzerX account immediately.');
+        const emailEl = document.getElementById('auth-email');
+        if (emailEl) emailEl.focus();
+        return;
+      }
+      const popup = window.open(d.url, 'helzerx_google_oauth', 'width=540,height=680');
+      if (!popup) {
+        setAuthError('Please allow popups for this site to sign in with Google.');
+      }
+    } catch {
+      setAuthError('Could not initialize Google sign-in.');
+    }
+  }
+
+  async function handleDiscordAuth() {
+    setAuthError('');
+    setAuthInfo('');
+    try {
+      const q = authReferral ? '?ref=' + encodeURIComponent(authReferral) : '';
+      const r = await fetch('/api/auth/discord/url' + q, { credentials: 'same-origin', cache: 'no-store' });
+      const d = await r.json();
+      if (!r.ok || !d.url) {
+        setAuthError(d.error || 'Discord OAuth is not configured on this server. Use your Gmail account below.');
+        return;
+      }
+      const popup = window.open(d.url, 'helzerx_discord_oauth', 'width=540,height=680');
+      if (!popup) {
+        window.location.href = loginUrl;
+      }
+    } catch {
+      window.location.href = loginUrl;
+    }
+  }
+
+  // Real Email/Gmail & Password Registration, Login, and 2FA Verification
   async function handleAuthSubmit(e) {
     if (e) e.preventDefault();
-    setBusy(true);
     setAuthError('');
+    setAuthInfo('');
 
+    if (authMode === 'signup') {
+      const pwdEval = evaluatePasswordStrength(authPassword);
+      if (!pwdEval.allMet) {
+        setAuthError('Password must be 10+ characters and include uppercase, lowercase, number, and symbol.');
+        return;
+      }
+      if (authPassword !== authConfirmPassword) {
+        setAuthError('Passwords do not match. Please re-enter carefully.');
+        return;
+      }
+    }
+
+    setBusy(true);
     try {
       if (authMode === 'signup') {
         const r = await fetch('/api/auth/register', {
@@ -288,10 +430,11 @@ export default function App() {
           return;
         }
         setAuthModalOpen(false);
-        setToast(`Welcome to HelzerX Cloud, ${d.user.username}!`);
+        setAuthPassword('');
+        setAuthConfirmPassword('');
+        setToast(`Welcome to HelzerX Cloud, ${d.user.username}! Enable 2FA inside Security for maximum protection.`);
         await loadData();
       } else {
-        // Login Mode
         const r = await fetch('/api/auth/login', {
           method: 'POST',
           credentials: 'same-origin',
@@ -306,12 +449,48 @@ export default function App() {
           setAuthError(d.error || 'Invalid email or password.');
           return;
         }
+        if (d.requires2fa) {
+          setAuthEmailHint(d.emailHint || authEmail);
+          setAuthStep('2fa');
+          setAuthTwoFactorCode('');
+          return;
+        }
         setAuthModalOpen(false);
+        setAuthPassword('');
         setToast(`Welcome back, ${d.user.username}!`);
         await loadData();
       }
-    } catch (err) {
+    } catch {
       setAuthError('Connection error. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handle2faVerifySubmit(e) {
+    if (e) e.preventDefault();
+    setBusy(true);
+    setAuthError('');
+    try {
+      const r = await fetch('/api/auth/2fa/login-verify', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: authTwoFactorCode })
+      });
+      const d = await r.json();
+      if (!r.ok) {
+        setAuthError(d.error || 'Invalid verification code.');
+        return;
+      }
+      setAuthModalOpen(false);
+      setAuthStep('form');
+      setAuthPassword('');
+      setAuthTwoFactorCode('');
+      setToast(d.usedBackupCode ? 'Signed in with backup recovery code. Consider regenerating your backup codes in Security.' : `Welcome back, ${d.user.username}!`);
+      await loadData();
+    } catch {
+      setAuthError('Connection error while verifying 2FA code.');
     } finally {
       setBusy(false);
     }
@@ -360,6 +539,7 @@ export default function App() {
               <a href="/control">Control Center ↗</a>
               <a href="#invites" onClick={() => setActiveTab('invites')} className={activeTab === 'invites' ? 'active' : ''}>Invite Hub</a>
               <a href="#boosts" onClick={() => setActiveTab('boosts')} className={activeTab === 'boosts' ? 'active' : ''}>Boost Rewards</a>
+              <a href="#security" onClick={() => setActiveTab('security')} className={activeTab === 'security' ? 'active' : ''}>Security</a>
               <a href="#preview" onClick={() => setViewPublicMode(true)}>View Landing</a>
             </>
           ) : (
@@ -377,12 +557,15 @@ export default function App() {
           {me ? (
             <div className="user-chip">
               {me.avatar ? (
-                <img src={me.avatar} alt={me.username} className="user-avatar" />
+                <img src={me.avatar} alt={me.username} className="user-avatar" referrerPolicy="no-referrer" />
               ) : (
                 <span className="user-avatar-fallback">{me.username.slice(0, 1).toUpperCase()}</span>
               )}
               <div className="user-details">
-                <span className="user-name">{me.global_name || me.username}</span>
+                <span className="user-name" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  {me.global_name || me.username}
+                  {me.twoFactorEnabled && <ShieldCheck size={12} color="#4ade80" title="2FA Protected" />}
+                </span>
                 <span className="user-badge">{money(rewards?.balance || 0)} HZL</span>
               </div>
               <button className="btn-icon" onClick={refreshAccount} title="Refresh balance" aria-label="Refresh balance">
@@ -396,13 +579,13 @@ export default function App() {
             <div style={{ display: 'flex', gap: '8px' }}>
               <button 
                 className="btn-pill secondary sm" 
-                onClick={() => { setAuthMode('login'); setAuthModalOpen(true); }}
+                onClick={() => openAuthModal('login')}
               >
                 Log In
               </button>
               <button 
                 className="btn-pill primary sm" 
-                onClick={() => { setAuthMode('signup'); setAuthModalOpen(true); }}
+                onClick={() => openAuthModal('signup')}
               >
                 Sign Up <ArrowRight size={12} />
               </button>
@@ -456,6 +639,12 @@ export default function App() {
                 onClick={() => setActiveTab('boosts')}
               >
                 <Zap size={14} /> Boost Claim Submission
+              </button>
+              <button 
+                className={`tab-btn ${activeTab === 'security' ? 'active' : ''}`}
+                onClick={() => { setActiveTab('security'); loadSecurityInfo(); }}
+              >
+                <ShieldCheck size={14} /> Security & 2FA
               </button>
             </div>
           </section>
@@ -830,6 +1019,21 @@ export default function App() {
               </div>
             </section>
           )}
+
+          {/* TAB 5: ACCOUNT & SECURITY CENTER */}
+          {activeTab === 'security' && (
+            <SecurityCenter
+              me={me}
+              securityInfo={securityInfo}
+              onRefreshSecurity={loadSecurityInfo}
+              onToast={setToast}
+              onSignedOut={() => {
+                setMe(null);
+                setRewards(null);
+                setSecurityInfo(null);
+              }}
+            />
+          )}
         </main>
       ) : (
         /* ================= PUBLIC LANDING EXPERIENCE ================= */
@@ -852,13 +1056,13 @@ export default function App() {
                 <div className="hero-cta-group">
                   <button 
                     className="btn-pill primary" 
-                    onClick={() => { setAuthMode('signup'); setAuthModalOpen(true); }}
+                    onClick={() => openAuthModal('signup')}
                   >
                     Get Started <ArrowRight size={13} />
                   </button>
                   <button 
                     className="btn-pill secondary" 
-                    onClick={() => { setAuthMode('login'); setAuthModalOpen(true); }}
+                    onClick={() => openAuthModal('login')}
                   >
                     Log In
                   </button>
@@ -933,7 +1137,7 @@ export default function App() {
               </div>
               <button 
                 className="btn-pill secondary" 
-                onClick={() => { setAuthMode('signup'); setAuthModalOpen(true); }}
+                onClick={() => openAuthModal('signup')}
               >
                 Sign Up Now <ArrowRight size={13} />
               </button>
@@ -998,13 +1202,13 @@ export default function App() {
             <div style={{ display: 'flex', gap: '12px' }}>
               <button 
                 className="btn-pill primary" 
-                onClick={() => { setAuthMode('signup'); setAuthModalOpen(true); }}
+                onClick={() => openAuthModal('signup')}
               >
                 Sign Up Now <ArrowRight size={13} />
               </button>
               <button 
                 className="btn-pill secondary" 
-                onClick={() => { setAuthMode('login'); setAuthModalOpen(true); }}
+                onClick={() => openAuthModal('login')}
               >
                 Log In
               </button>
@@ -1063,197 +1267,314 @@ export default function App() {
         </main>
       )}
 
-      {/* ================= EXACT SPLIT AUTH CARD MODAL (Matching Uploaded Image) ================= */}
-      {authModalOpen && (
-        <div className="auth-overlay" onClick={() => setAuthModalOpen(false)}>
-          <div className="auth-container" onClick={e => e.stopPropagation()}>
-            {/* Left side: Purple Aurora Blur with Stepper */}
-            <div className="auth-left">
-              <div className="auth-left-brand">
-                <span className="auth-brand-dot" /> HelzerX
-              </div>
+      {/* ================= SPLIT AUTH CARD MODAL (Gmail + Google + Discord + 2FA) ================= */}
+      {authModalOpen && (() => {
+        const pwdEval = evaluatePasswordStrength(authPassword);
+        return (
+          <div className="auth-overlay" onClick={() => setAuthModalOpen(false)}>
+            <div className="auth-container" onClick={e => e.stopPropagation()}>
+              {/* Left side: Purple Aurora Blur with Security Stepper */}
+              <div className="auth-left">
+                <div>
+                  <div className="auth-left-brand">
+                    <span className="auth-brand-dot" /> HelzerX
+                  </div>
 
-              <div className="auth-left-hero">
-                <h2 className="auth-left-title">Get Started with Us</h2>
-                <p className="auth-left-sub">Complete these easy steps to register your account and deploy cloud servers.</p>
-              </div>
-
-              <div className="auth-steps-list">
-                <div className={`auth-step-pill ${authMode === 'signup' ? 'active' : 'inactive'}`}>
-                  <span className="auth-step-num">1</span>
-                  <span>{authMode === 'signup' ? 'Sign up your account' : 'Log into your account'}</span>
+                  <div className="auth-left-hero">
+                    <h2 className="auth-left-title">
+                      {authStep === '2fa' ? 'Verify Your Identity' : (authMode === 'signup' ? 'Create Your Cloud Account' : 'Secured Cloud Access')}
+                    </h2>
+                    <p className="auth-left-sub">
+                      {authStep === '2fa'
+                        ? 'Two-factor authentication protects your VPS containers, Minecraft worlds, and HZL ledger.'
+                        : 'Sign up or log in with Gmail, Google OAuth, or Discord — protected by scrypt hashing, rate-limit defense, and TOTP 2FA.'}
+                    </p>
+                  </div>
                 </div>
-                <div className="auth-step-pill inactive">
-                  <span className="auth-step-num">2</span>
-                  <span>Set up your workspace</span>
-                </div>
-                <div className="auth-step-pill inactive">
-                  <span className="auth-step-num">3</span>
-                  <span>Set up your profile</span>
-                </div>
-              </div>
-            </div>
 
-            {/* Right side: Form & Auth Action Buttons */}
-            <div className="auth-right">
-              <button className="auth-close-btn" onClick={() => setAuthModalOpen(false)} aria-label="Close modal">
-                <X size={16} />
-              </button>
-
-              <div className="auth-right-head">
-                <h2 className="auth-right-title">
-                  {authMode === 'signup' ? 'Sign Up Account' : 'Welcome Back'}
-                </h2>
-                <p className="auth-right-sub">
-                  {authMode === 'signup' 
-                    ? 'Enter your personal data to create your account.' 
-                    : 'Enter your account credentials to access your console.'}
-                </p>
-              </div>
-
-              {/* Social Login Options (Discord + GitHub) */}
-              <div className="auth-social-row">
-                <a 
-                  className="auth-social-btn" 
-                  href={loginUrl}
-                  title="Connect via official Discord OAuth2"
-                >
-                  <DiscordIcon size={17} />
-                  <span>Discord</span>
-                </a>
-                <button 
-                  type="button"
-                  className="auth-social-btn"
-                  onClick={() => {
-                    setAuthEmail('github_member@helzerx.cloud');
-                    setAuthPassword('githubSecure2026');
-                    setAuthFirstName('GitHub');
-                    setAuthLastName('Developer');
-                  }}
-                  title="Use GitHub Developer Credentials"
-                >
-                  <GithubIcon size={17} />
-                  <span>Github</span>
-                </button>
-              </div>
-
-              <div className="auth-divider">Or</div>
-
-              {/* Error Banner */}
-              {authError && (
-                <div style={{ background: 'rgba(231, 76, 60, 0.12)', border: '1px solid rgba(231, 76, 60, 0.4)', borderRadius: '8px', padding: '10px 14px', color: '#e74c3c', fontSize: '12px' }}>
-                  {authError}
-                </div>
-              )}
-
-              {/* Real Input Form matching the uploaded screenshot */}
-              <form className="auth-form" onSubmit={handleAuthSubmit}>
-                {authMode === 'signup' && (
-                  <div className="auth-form-row">
-                    <div className="auth-input-group">
-                      <label htmlFor="auth-fn">First Name</label>
-                      <input 
-                        id="auth-fn"
-                        type="text" 
-                        value={authFirstName}
-                        onChange={e => setAuthFirstName(e.target.value)}
-                        placeholder="eg. John"
-                        required={authMode === 'signup'}
-                      />
+                <div>
+                  <div className="auth-steps-list">
+                    <div className={`auth-step-pill ${authStep === 'form' ? 'active' : 'inactive'}`}>
+                      <span className="auth-step-num">1</span>
+                      <span>{authMode === 'signup' ? 'Gmail / OAuth Registration' : 'Verify Account Credentials'}</span>
                     </div>
-                    <div className="auth-input-group">
-                      <label htmlFor="auth-ln">Last Name</label>
-                      <input 
-                        id="auth-ln"
-                        type="text" 
-                        value={authLastName}
-                        onChange={e => setAuthLastName(e.target.value)}
-                        placeholder="eg. Francisco"
-                        required={authMode === 'signup'}
-                      />
+                    <div className={`auth-step-pill ${authStep === '2fa' ? 'active' : 'inactive'}`}>
+                      <span className="auth-step-num">2</span>
+                      <span>2FA & Session Encryption</span>
+                    </div>
+                    <div className="auth-step-pill inactive">
+                      <span className="auth-step-num">3</span>
+                      <span>Launch VPS & Minecraft Nodes</span>
                     </div>
                   </div>
-                )}
 
-                <div className="auth-input-group">
-                  <label htmlFor="auth-email">Email</label>
-                  <input 
-                    id="auth-email"
-                    type="email" 
-                    value={authEmail}
-                    onChange={e => setAuthEmail(e.target.value)}
-                    placeholder="eg. johnfrans@gmail.com"
-                    required
-                  />
-                </div>
-
-                <div className="auth-input-group">
-                  <label htmlFor="auth-pwd">Password</label>
-                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                    <input 
-                      id="auth-pwd"
-                      type={showPassword ? 'text' : 'password'}
-                      value={authPassword}
-                      onChange={e => setAuthPassword(e.target.value)}
-                      placeholder="Enter your password"
-                      required
-                      style={{ width: '100%', paddingRight: '40px' }}
-                    />
-                    <button 
-                      type="button" 
-                      onClick={() => setShowPassword(!showPassword)}
-                      style={{ position: 'absolute', right: '12px', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex' }}
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
+                  <div className="auth-security-badges">
+                    <span className="auth-sec-chip"><Lock size={11} /> Scrypt + Timing-Safe</span>
+                    <span className="auth-sec-chip"><ShieldCheck size={11} /> TOTP 2FA Ready</span>
+                    <span className="auth-sec-chip"><Shield size={11} /> Brute-Force Guard</span>
                   </div>
-                  <span className="auth-input-hint">Must be at least 8 characters.</span>
                 </div>
+              </div>
 
-                {authMode === 'signup' && (
-                  <div className="auth-input-group">
-                    <label htmlFor="auth-ref">Referral Code (Optional)</label>
-                    <input 
-                      id="auth-ref"
-                      type="text" 
-                      value={authReferral}
-                      onChange={e => setAuthReferral(e.target.value)}
-                      placeholder="Referrer user ID"
-                    />
-                  </div>
-                )}
-
-                <button 
-                  type="submit" 
-                  className="auth-submit-btn"
-                  disabled={busy}
-                >
-                  {busy ? 'Processing...' : (authMode === 'signup' ? 'Sign Up' : 'Log In')}
+              {/* Right side: Form, OAuth & 2FA Challenge */}
+              <div className="auth-right">
+                <button className="auth-close-btn" onClick={() => setAuthModalOpen(false)} aria-label="Close modal">
+                  <X size={16} />
                 </button>
-              </form>
 
-              <div className="auth-bottom-text">
-                {authMode === 'signup' ? (
+                {authStep === '2fa' ? (
                   <>
-                    Already have an account? 
-                    <button onClick={() => { setAuthMode('login'); setAuthError(''); }}>
-                      Log In
-                    </button>
+                    <div className="auth-right-head">
+                      <h2 className="auth-right-title">Two-Factor Verification</h2>
+                      <p className="auth-right-sub">
+                        Enter the 6-digit code from your authenticator app {authEmailHint ? `for ${authEmailHint}` : ''} or use an 8-character backup recovery code.
+                      </p>
+                    </div>
+
+                    {authError && (
+                      <div className="auth-alert error">
+                        <ShieldAlert size={15} style={{ flexShrink: 0, marginTop: '1px' }} />
+                        <span>{authError}</span>
+                      </div>
+                    )}
+
+                    {authInfo && (
+                      <div className="auth-alert info">
+                        <ShieldCheck size={15} style={{ flexShrink: 0, marginTop: '1px' }} />
+                        <span>{authInfo}</span>
+                      </div>
+                    )}
+
+                    <form className="auth-form" onSubmit={handle2faVerifySubmit}>
+                      <div className="auth-input-group">
+                        <label htmlFor="auth-2fa-code">Authenticator or Backup Code</label>
+                        <input
+                          id="auth-2fa-code"
+                          type="text"
+                          className="auth-otp-input"
+                          value={authTwoFactorCode}
+                          onChange={e => setAuthTwoFactorCode(e.target.value.toUpperCase().slice(0, 10))}
+                          placeholder="000000"
+                          autoFocus
+                          required
+                        />
+                        <span className="auth-input-hint">Supports 6-digit TOTP codes or XXXX-XXXX backup recovery codes.</span>
+                      </div>
+
+                      <button type="submit" className="auth-submit-btn" disabled={busy}>
+                        {busy ? 'Verifying...' : 'Verify & Access Console'} <ShieldCheck size={15} />
+                      </button>
+
+                      <button
+                        type="button"
+                        className="btn-pill secondary sm"
+                        style={{ alignSelf: 'center', marginTop: '4px' }}
+                        onClick={() => { setAuthStep('form'); setAuthError(''); setAuthInfo(''); }}
+                      >
+                        Back to Login
+                      </button>
+                    </form>
+
+                    <div className="auth-bottom-text">
+                      Protected by replay-safe TOTP & session rotation
+                    </div>
                   </>
                 ) : (
                   <>
-                    Don't have an account? 
-                    <button onClick={() => { setAuthMode('signup'); setAuthError(''); }}>
-                      Sign Up
-                    </button>
+                    <div className="auth-right-head">
+                      <h2 className="auth-right-title">
+                        {authMode === 'signup' ? 'Create Account' : 'Welcome Back'}
+                      </h2>
+                      <p className="auth-right-sub">
+                        {authMode === 'signup'
+                          ? 'Register with your Gmail address or connect via Google / Discord.'
+                          : 'Sign in with your Gmail/Email password, Google, or Discord.'}
+                      </p>
+                    </div>
+
+                    {/* Social Login Options (Google Gmail + Discord) */}
+                    <div className="auth-social-row">
+                      <button
+                        type="button"
+                        className="auth-social-btn"
+                        onClick={handleGoogleAuth}
+                        title={authProviders.googleConfigured ? 'Continue with Google (Gmail) OAuth' : 'Use Gmail Sign-In'}
+                      >
+                        <GoogleIcon size={17} />
+                        <span>Google (Gmail)</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="auth-social-btn"
+                        onClick={handleDiscordAuth}
+                        title="Connect via official Discord OAuth2"
+                      >
+                        <DiscordIcon size={17} />
+                        <span>Discord</span>
+                      </button>
+                    </div>
+
+                    <div className="auth-divider">Or with Gmail / Email</div>
+
+                    {authError && (
+                      <div className="auth-alert error">
+                        <ShieldAlert size={15} style={{ flexShrink: 0, marginTop: '1px' }} />
+                        <span>{authError}</span>
+                      </div>
+                    )}
+
+                    {authInfo && (
+                      <div className="auth-alert info">
+                        <Mail size={15} style={{ flexShrink: 0, marginTop: '1px' }} />
+                        <span>{authInfo}</span>
+                      </div>
+                    )}
+
+                    <form className="auth-form" onSubmit={handleAuthSubmit}>
+                      {authMode === 'signup' && (
+                        <div className="auth-form-row">
+                          <div className="auth-input-group">
+                            <label htmlFor="auth-fn">First Name</label>
+                            <input
+                              id="auth-fn"
+                              type="text"
+                              value={authFirstName}
+                              onChange={e => setAuthFirstName(e.target.value)}
+                              placeholder="eg. Kavindu"
+                              required
+                            />
+                          </div>
+                          <div className="auth-input-group">
+                            <label htmlFor="auth-ln">Last Name</label>
+                            <input
+                              id="auth-ln"
+                              type="text"
+                              value={authLastName}
+                              onChange={e => setAuthLastName(e.target.value)}
+                              placeholder="eg. Perera"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="auth-input-group">
+                        <label htmlFor="auth-email">Gmail / Email Address</label>
+                        <input
+                          id="auth-email"
+                          type="email"
+                          autoComplete="email"
+                          value={authEmail}
+                          onChange={e => setAuthEmail(e.target.value)}
+                          placeholder="eg. yourname@gmail.com"
+                          required
+                        />
+                      </div>
+
+                      <div className="auth-input-group">
+                        <label htmlFor="auth-pwd">Password</label>
+                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                          <input
+                            id="auth-pwd"
+                            type={showPassword ? 'text' : 'password'}
+                            autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
+                            value={authPassword}
+                            onChange={e => setAuthPassword(e.target.value)}
+                            placeholder={authMode === 'signup' ? 'Create a strong password (10+ chars)' : 'Enter your password'}
+                            required
+                            style={{ width: '100%', paddingRight: '40px' }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            style={{ position: 'absolute', right: '12px', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex' }}
+                            aria-label={showPassword ? 'Hide password' : 'Show password'}
+                          >
+                            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                        </div>
+
+                        {authMode === 'signup' ? (
+                          <div className="pwd-strength-wrap">
+                            <div className="pwd-strength-header">
+                              <span>Security strength</span>
+                              <strong style={{ color: pwdEval.score >= 3 ? '#86efac' : pwdEval.score >= 2 ? '#fcd34d' : 'var(--text-muted)' }}>
+                                {pwdEval.label}
+                              </strong>
+                            </div>
+                            <div className="pwd-strength-bars">
+                              {[1, 2, 3, 4].map(bar => (
+                                <div key={bar} className={`pwd-strength-bar ${pwdEval.score >= bar ? `lvl-${pwdEval.score}` : ''}`} />
+                              ))}
+                            </div>
+                            <div className="pwd-rules-grid">
+                              {pwdEval.rules.map(rule => (
+                                <span key={rule.id} className={`pwd-rule-tag ${rule.met ? 'met' : ''}`}>
+                                  {rule.met && <Check size={10} />} {rule.label}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="auth-input-hint">Protected by scrypt hashing & rate-limit lockout.</span>
+                        )}
+                      </div>
+
+                      {authMode === 'signup' && (
+                        <div className="auth-form-row">
+                          <div className="auth-input-group">
+                            <label htmlFor="auth-pwd-confirm">Confirm Password</label>
+                            <input
+                              id="auth-pwd-confirm"
+                              type={showPassword ? 'text' : 'password'}
+                              autoComplete="new-password"
+                              value={authConfirmPassword}
+                              onChange={e => setAuthConfirmPassword(e.target.value)}
+                              placeholder="Re-enter password"
+                              required
+                            />
+                          </div>
+                          <div className="auth-input-group">
+                            <label htmlFor="auth-ref">Referral Code (Optional)</label>
+                            <input
+                              id="auth-ref"
+                              type="text"
+                              value={authReferral}
+                              onChange={e => setAuthReferral(e.target.value)}
+                              placeholder="Referrer user ID"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      <button type="submit" className="auth-submit-btn" disabled={busy}>
+                        {busy ? 'Securing Session...' : (authMode === 'signup' ? 'Create Secured Account' : 'Log In Securely')}
+                      </button>
+                    </form>
+
+                    <div className="auth-bottom-text">
+                      {authMode === 'signup' ? (
+                        <>
+                          Already have an account?
+                          <button type="button" onClick={() => openAuthModal('login')}>
+                            Log In
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          Don't have an account?
+                          <button type="button" onClick={() => openAuthModal('signup')}>
+                            Sign Up with Gmail
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </>
                 )}
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <VpsDeployModal plan={vpsModalPlan} nodes={vpsDeploymentOptions.nodes} osOptions={vpsDeploymentOptions.osOptions} balance={rewards?.balance || 0} busy={busy} onClose={() => setVpsModalPlan(null)} onLoadTemplates={loadVpsTemplates} onDeploy={config => executeHostingRequest(vpsModalPlan, config)} />
       <MinecraftDeployModal plan={mcModalPlan} eggs={mcEggs} nodes={mcNodes} balance={rewards?.balance || 0} busy={busy} onClose={() => setMcModalPlan(null)} onDeploy={config => executeHostingRequest(mcModalPlan, config)} />

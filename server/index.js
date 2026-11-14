@@ -5,6 +5,21 @@ import crypto from 'node:crypto';
 import { provisionLxc, proxmoxReadiness, manageLxc, inspectLxc, runLxcTerminal, manageLxcSnapshot, listLxcTemplates } from './proxmox.js';
 import { provisionMinecraftServer, pterodactylReadiness, manageMinecraftServer, inspectMinecraftServer, sendMinecraftCommand, listMinecraftEggs, listMinecraftNodes } from './pterodactyl.js';
 import { readState, writeState } from './database.js';
+import {
+  normalizeEmail,
+  validatePasswordStrength,
+  hashPassword,
+  verifyPassword,
+  generateTotpSecret,
+  verifyTotpToken,
+  buildTotpSetupPayload,
+  generateBackupCodes,
+  consumeBackupCode,
+  createAuthRateLimiter,
+  buildPkceChallenge,
+  recordSecurityEvent,
+  resolveGoogleOAuthConfig
+} from './auth-security.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +30,20 @@ const required=['SESSION_SECRET','DISCORD_CLIENT_ID','DISCORD_CLIENT_SECRET','DI
 const missing=required.filter(k=>!process.env[k]);if(prod&&missing.length)console.error('[startup] Missing environment variables:',missing.join(', '));
 if(prod&&(!process.env.SESSION_SECRET||process.env.SESSION_SECRET.length<32))throw new Error('SESSION_SECRET must be at least 32 characters in production.');
 app.disable('x-powered-by');app.set('trust proxy',1);app.use(express.json({limit:'20kb'}));
-app.use(session({name:'hx_freehost_sid',secret:process.env.SESSION_SECRET||'development-only-change-me',resave:false,saveUninitialized:false,rolling:true,cookie:{httpOnly:true,secure:prod,sameSite:'lax',maxAge:604800000}}));
+app.use((_req,res,next)=>{
+  res.setHeader('X-Content-Type-Options','nosniff');
+  res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');
+  res.setHeader('X-DNS-Prefetch-Control','off');
+  res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=()');
+  next();
+});
+app.use(session({name:'hx_freehost_sid',secret:process.env.SESSION_SECRET||'development-only-change-me',resave:false,saveUninitialized:false,rolling:true,cookie:{httpOnly:true,secure:'auto',sameSite:'lax',maxAge:604800000}}));
+app.use((req,_res,next)=>{
+  const isHttps=req.secure||req.get('x-forwarded-proto')==='https';
+  if(isHttps){req.session.cookie.secure=true;req.session.cookie.sameSite='none';}
+  else{req.session.cookie.secure=false;req.session.cookie.sameSite='lax';}
+  next();
+});
 
 // Never let a CDN, browser cache, or SPA fallback serve a stale public page for staff-only paths.
 app.use(['/admin', '/admin/', '/admin.html'], (_req, res, next) => {
@@ -118,150 +146,680 @@ function readData(){
 }
 let data=readData();
 function writeData(){writeState(data);}
-function ensureUser(id){if(!data.users[id])data.users[id]={balance:0,verifiedInvites:0,activeBoosts:0,referrer:null,pendingReferrer:null,creditedMilestones:[],createdAt:Date.now()};if(!Array.isArray(data.inviteClaims))data.inviteClaims=[];if(!Array.isArray(data.hostingRequests))data.hostingRequests=[];return data.users[id];}
+function ensureUser(id){
+  if(!data.users[id]){
+    data.users[id]={balance:0,verifiedInvites:0,activeBoosts:0,referrer:null,pendingReferrer:null,creditedMilestones:[],sessionVersion:1,authProviders:[],twoFactorEnabled:false,securityEvents:[],createdAt:Date.now()};
+  }
+  const u=data.users[id];
+  if(!Number.isInteger(u.sessionVersion)||u.sessionVersion<1)u.sessionVersion=1;
+  if(!Array.isArray(u.authProviders))u.authProviders=[];
+  if(!Array.isArray(u.securityEvents))u.securityEvents=[];
+  if(!Array.isArray(data.inviteClaims))data.inviteClaims=[];
+  if(!Array.isArray(data.hostingRequests))data.hostingRequests=[];
+  return u;
+}
 const inviteTiers=[[2,200],[4,600],[8,900],[12,1300],[16,1700],[24,2400],[28,2900],[34,3400],[38,4000],[42,4500]];
 const boostTiers=[[1,2000],[2,4000],[3,4700],[4,5000],[7,6900],[10,10000]];
 function creditInviteMilestones(id){const u=ensureUser(id);for(const [count,amount] of inviteTiers){const key='invite:'+count;if(u.verifiedInvites>=count&&!u.creditedMilestones.includes(key)){u.balance+=amount;u.creditedMilestones.push(key);}}}
 function discordGuildMemberships(accessToken){return fetch('https://discord.com/api/users/@me/guilds',{headers:{Authorization:'Bearer '+accessToken,Accept:'application/json'},signal:AbortSignal.timeout(10000)});}
 
-function publicUser(u){return u?{id:u.id,username:u.username,global_name:u.global_name||u.username,avatar:u.avatar?'https://cdn.discordapp.com/avatars/'+u.id+'/'+u.avatar+'.'+(u.avatar.startsWith('a_')?'gif':'png')+'?size=128':null}:null;}
-function auth(req,res,next){if(!req.session.user)return res.status(401).json({error:'DISCORD_LOGIN_REQUIRED'});const account=data.users[req.session.user.id];if(account?.status==='suspended')return res.status(403).json({error:'ACCOUNT_SUSPENDED'});next();}
-async function rewardsFor(user){const u=ensureUser(user.id);return {connected:true,balance:u.balance,verifiedInvites:u.verifiedInvites,activeBoosts:u.activeBoosts,rewards:[],message:null,inviteTiers,boostTiers,referralCode:user.id};}
-app.get('/api/health',(_q,r)=>r.json({ok:true,service:'helzerx-freehost',discordConfigured:Boolean(process.env.DISCORD_CLIENT_ID&&process.env.DISCORD_CLIENT_SECRET),rewardsConfigured:Boolean(process.env.REWARDS_API_URL&&process.env.REWARDS_API_TOKEN),proxmox:{enabled:proxmoxReadiness().enabled,ready:proxmoxReadiness().ready},pterodactyl:pterodactylReadiness()}));
-app.get('/api/auth/discord',(req,res)=>{if(!process.env.DISCORD_CLIENT_ID||!process.env.DISCORD_REDIRECT_URI)return res.status(503).send('Discord login is not configured yet.');const state=crypto.randomBytes(32).toString('hex');pendingOAuth.set(state,{createdAt:Date.now(),referral:typeof req.query.ref==='string'?req.query.ref:''});for(const [k,v] of pendingOAuth)if(Date.now()-v.createdAt>600000)pendingOAuth.delete(k);const u=new URL('https://discord.com/oauth2/authorize');u.searchParams.set('client_id',process.env.DISCORD_CLIENT_ID);u.searchParams.set('response_type','code');u.searchParams.set('redirect_uri',process.env.DISCORD_REDIRECT_URI);u.searchParams.set('scope','identify guilds');u.searchParams.set('state',state);res.redirect(u.toString());});
-app.get('/api/auth/discord/callback',async(req,res)=>{const {code,state,error}=req.query;if(error)return res.redirect('/?login=cancelled');const issued=pendingOAuth.get(String(state||''));pendingOAuth.delete(String(state||''));const referral=issued?.referral||'';if(!issued||Date.now()-issued.createdAt>600000||typeof code!=='string')return res.status(400).send('Invalid or expired Discord login state. Please return and try again.');try{
- const form=new URLSearchParams({client_id:process.env.DISCORD_CLIENT_ID,client_secret:process.env.DISCORD_CLIENT_SECRET,grant_type:'authorization_code',code,redirect_uri:process.env.DISCORD_REDIRECT_URI});
- const tr=await fetch('https://discord.com/api/oauth2/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json'},body:form,signal:AbortSignal.timeout(10000)});const tok=await tr.json();if(!tr.ok||!tok.access_token)throw new Error('Discord token exchange failed');
- const guildsResponse=await discordGuildMemberships(tok.access_token);let guilds=[];if(guildsResponse.ok)guilds=await guildsResponse.json();if(process.env.DISCORD_GUILD_ID&&(!guildsResponse.ok||!guilds.some(g=>g.id===process.env.DISCORD_GUILD_ID)))return res.redirect('/?login=join-discord');
- const mr=await fetch('https://discord.com/api/users/@me',{headers:{Authorization:'Bearer '+tok.access_token,Accept:'application/json'},signal:AbortSignal.timeout(10000)});const me=await mr.json();if(!mr.ok||!me.id)throw new Error('Discord identity lookup failed');
- 
- await new Promise((resolve,reject)=>req.session.regenerate(e=>e?reject(e):resolve()));req.session.user={id:me.id,username:me.username,global_name:me.global_name||me.username,avatar:me.avatar||null,loggedAt:Date.now()};
- const member=ensureUser(me.id);if(referral&&referral!==me.id&&!member.referrer&&!member.pendingReferrer&&data.users[referral]){member.pendingReferrer=referral;data.inviteClaims.push({id:crypto.randomUUID(),referrerId:referral,inviteeId:me.id,inviteeUsername:me.username,status:'pending',createdAt:new Date().toISOString()});}writeData();req.session.save(e=>{if(e)return res.status(500).send('Could not create a secure session. Please try again.');res.redirect('/?login=success');});
- }catch(e){console.error('[discord OAuth]',e.message);res.redirect('/?login=failed');}});
-function hashPassword(password, salt) {
-  return crypto.scryptSync(password, salt, 64).toString('hex');
+const loginIpLimiter=createAuthRateLimiter({windowMs:15*60*1000,maxAttempts:10,blockDurationMs:15*60*1000});
+const loginEmailLimiter=createAuthRateLimiter({windowMs:15*60*1000,maxAttempts:5,blockDurationMs:15*60*1000});
+const registerIpLimiter=createAuthRateLimiter({windowMs:60*60*1000,maxAttempts:8,blockDurationMs:60*60*1000});
+const twoFaLimiter=createAuthRateLimiter({windowMs:10*60*1000,maxAttempts:5,blockDurationMs:10*60*1000});
+
+function clientIp(req){return String(req.ip||req.socket?.remoteAddress||'unknown');}
+function sameOriginAuthGuard(req,res,next){
+  const origin=req.get('origin');
+  if(origin){
+    try{
+      const parsedOrigin=new URL(origin);
+      const reqHost=String(req.get('host')||'').toLowerCase();
+      const expectedOrigin=new URL(`${req.protocol}://${req.get('host')}`).origin;
+      const appUrlOrigin=process.env.APP_URL?new URL(process.env.APP_URL).origin:null;
+      const matchesOrigin=parsedOrigin.origin===expectedOrigin||(appUrlOrigin&&parsedOrigin.origin===appUrlOrigin)||(reqHost&&parsedOrigin.host.toLowerCase()===reqHost);
+      if(!matchesOrigin){
+        return res.status(403).json({error:'Cross-origin authentication request denied.'});
+      }
+    }catch{return res.status(403).json({error:'Invalid request origin.'});}
+  }
+  next();
+}
+function requireJsonAuth(req,res,next){
+  if(!req.is('application/json'))return res.status(415).json({error:'JSON requests required.'});
+  next();
 }
 
-app.post('/api/auth/register', (req, res) => {
-  const firstName = String(req.body?.firstName || '').trim();
-  const lastName = String(req.body?.lastName || '').trim();
-  const email = String(req.body?.email || '').trim().toLowerCase();
-  const password = String(req.body?.password || '');
-  const referral = String(req.body?.referralCode || '').trim();
-
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return res.status(400).json({ error: 'Please enter a valid email address.' });
-  }
-  if (!password || password.length < 8) {
-    return res.status(400).json({ error: 'Password must be at least 8 characters.' });
-  }
-
-  for (const [, u] of Object.entries(data.users)) {
-    if (u.email && u.email.toLowerCase() === email) {
-      return res.status(409).json({ error: 'An account with this email address already exists. Please log in.' });
+function resolveAvatarUrl(u){
+  if(!u||!u.avatar)return null;
+  if(/^https?:\/\//i.test(String(u.avatar)))return u.avatar;
+  return 'https://cdn.discordapp.com/avatars/'+u.id+'/'+u.avatar+'.'+(String(u.avatar).startsWith('a_')?'gif':'png')+'?size=128';
+}
+function publicUser(u){
+  if(!u)return null;
+  const account=data.users[u.id];
+  return {
+    id:u.id,
+    username:u.username,
+    global_name:u.global_name||u.username,
+    email:account?.email||u.email||null,
+    avatar:resolveAvatarUrl({...u,avatar:account?.avatar||u.avatar}),
+    authProviders:Array.isArray(account?.authProviders)?account.authProviders:(Array.isArray(u.authProviders)?u.authProviders:[]),
+    twoFactorEnabled:Boolean(account?.twoFactorEnabled)
+  };
+}
+function buildSessionUser(account,id){
+  return {
+    id,
+    email:account.email||null,
+    username:account.username||account.global_name||'Member',
+    global_name:account.global_name||account.username||'Member',
+    avatar:account.avatar||null,
+    sessionVersion:Number(account.sessionVersion)||1,
+    loggedAt:Date.now()
+  };
+}
+function findUserByEmail(email,canonicalEmail){
+  for(const [id,u] of Object.entries(data.users)){
+    if(!u)continue;
+    if(u.email&&u.email.toLowerCase()===email)return {id,user:u};
+    if(canonicalEmail&&u.canonicalEmail&&u.canonicalEmail===canonicalEmail)return {id,user:u};
+    if(canonicalEmail&&u.email){
+      const parsed=normalizeEmail(u.email);
+      if(parsed.valid&&parsed.canonicalEmail===canonicalEmail)return {id,user:u};
     }
   }
+  return null;
+}
+function findUserByGoogleSub(sub){
+  for(const [id,u] of Object.entries(data.users)){
+    if(u&&u.googleSub===sub)return {id,user:u};
+  }
+  return null;
+}
+function auth(req,res,next){
+  if(!req.session.user)return res.status(401).json({error:'LOGIN_REQUIRED'});
+  const account=data.users[req.session.user.id];
+  if(account?.status==='suspended')return res.status(403).json({error:'ACCOUNT_SUSPENDED'});
+  const expectedVer=Number(account?.sessionVersion||1);
+  const tokenVer=Number(req.session.user.sessionVersion||1);
+  if(account&&tokenVer!==expectedVer){
+    req.session.destroy(()=>{});
+    return res.status(401).json({error:'SESSION_REVOKED'});
+  }
+  next();
+}
+function oauthPopupResponse(res,{ok,type,message}){
+  const payload=JSON.stringify({type:type||(ok?'OAUTH_AUTH_SUCCESS':'OAUTH_AUTH_ERROR'),ok:Boolean(ok),message:message||''});
+  const redirectTarget=ok?'/?login=success':('/?login=failed');
+  res.set('Cache-Control','no-store');
+  res.type('html').send(`<!doctype html><html><body style="background:#09090d;color:#fff;font-family:sans-serif;display:grid;place-items:center;min-height:100vh;margin:0"><div style="text-align:center;padding:24px"><p>${ok?'Authentication verified. Closing window...':String(message||'Authentication could not complete.')}</p><script>if(window.opener){window.opener.postMessage(${payload},'*');setTimeout(()=>window.close(),150);}else{window.location.href=${JSON.stringify(redirectTarget)};}</script></div></body></html>`);
+}
+async function rewardsFor(user){const u=ensureUser(user.id);return {connected:true,balance:u.balance,verifiedInvites:u.verifiedInvites,activeBoosts:u.activeBoosts,rewards:[],message:null,inviteTiers,boostTiers,referralCode:user.id};}
+app.get('/api/health',(req,r)=>{
+  const g=resolveGoogleOAuthConfig(req);
+  r.json({ok:true,service:'helzerx-freehost',discordConfigured:Boolean(process.env.DISCORD_CLIENT_ID&&process.env.DISCORD_CLIENT_SECRET),googleConfigured:g.configured,emailAuthEnabled:true,rewardsConfigured:Boolean(process.env.REWARDS_API_URL&&process.env.REWARDS_API_TOKEN),proxmox:{enabled:proxmoxReadiness().enabled,ready:proxmoxReadiness().ready},pterodactyl:pterodactylReadiness()});
+});
+app.get('/api/auth/providers',(req,res)=>{
+  const g=resolveGoogleOAuthConfig(req);
+  res.set('Cache-Control','no-store');
+  res.json({
+    emailAuthEnabled:true,
+    discordConfigured:Boolean(process.env.DISCORD_CLIENT_ID&&process.env.DISCORD_CLIENT_SECRET&&process.env.DISCORD_REDIRECT_URI),
+    googleConfigured:g.configured,
+    googleRedirectUri:g.redirectUri,
+    minPasswordLength:10,
+    twoFactorSupported:true
+  });
+});
 
-  const salt = crypto.randomBytes(16).toString('hex');
-  const passwordHash = hashPassword(password, salt);
-  const id = 'usr_' + crypto.randomBytes(6).toString('hex');
-  const username = (firstName + (lastName ? ' ' + lastName : '')).trim() || email.split('@')[0];
+function buildDiscordAuthUrl({referral='',popup=false}){
+  const state=crypto.randomBytes(32).toString('hex');
+  pendingOAuth.set(state,{provider:'discord',createdAt:Date.now(),referral,popup:Boolean(popup)});
+  for(const [k,v] of pendingOAuth)if(Date.now()-v.createdAt>600000)pendingOAuth.delete(k);
+  const u=new URL('https://discord.com/oauth2/authorize');
+  u.searchParams.set('client_id',process.env.DISCORD_CLIENT_ID);
+  u.searchParams.set('response_type','code');
+  u.searchParams.set('redirect_uri',process.env.DISCORD_REDIRECT_URI);
+  u.searchParams.set('scope','identify guilds');
+  u.searchParams.set('state',state);
+  return u.toString();
+}
+app.get('/api/auth/discord/url',(req,res)=>{
+  if(!process.env.DISCORD_CLIENT_ID||!process.env.DISCORD_REDIRECT_URI)return res.status(503).json({configured:false,error:'Discord OAuth is not configured yet.'});
+  const url=buildDiscordAuthUrl({referral:typeof req.query.ref==='string'?req.query.ref:'',popup:true});
+  res.set('Cache-Control','no-store');
+  res.json({configured:true,url});
+});
+app.get('/api/auth/discord',(req,res)=>{
+  if(!process.env.DISCORD_CLIENT_ID||!process.env.DISCORD_REDIRECT_URI)return res.status(503).send('Discord login is not configured yet.');
+  res.redirect(buildDiscordAuthUrl({referral:typeof req.query.ref==='string'?req.query.ref:'',popup:false}));
+});
+app.get(['/api/auth/discord/callback','/api/auth/discord/callback/'],async(req,res)=>{
+  const {code,state,error}=req.query;
+  const issued=pendingOAuth.get(String(state||''));pendingOAuth.delete(String(state||''));
+  const isPopup=Boolean(issued?.popup);
+  if(error){return isPopup?oauthPopupResponse(res,{ok:false,message:'Discord login was cancelled.'}):res.redirect('/?login=cancelled');}
+  const referral=issued?.referral||'';
+  if(!issued||issued.provider!=='discord'||Date.now()-issued.createdAt>600000||typeof code!=='string'){
+    return isPopup?oauthPopupResponse(res,{ok:false,message:'Invalid or expired Discord login state.'}):res.status(400).send('Invalid or expired Discord login state. Please return and try again.');
+  }
+  try{
+    const form=new URLSearchParams({client_id:process.env.DISCORD_CLIENT_ID,client_secret:process.env.DISCORD_CLIENT_SECRET,grant_type:'authorization_code',code,redirect_uri:process.env.DISCORD_REDIRECT_URI});
+    const tr=await fetch('https://discord.com/api/oauth2/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json'},body:form,signal:AbortSignal.timeout(10000)});const tok=await tr.json();if(!tr.ok||!tok.access_token)throw new Error('Discord token exchange failed');
+    const guildsResponse=await discordGuildMemberships(tok.access_token);let guilds=[];if(guildsResponse.ok)guilds=await guildsResponse.json();if(process.env.DISCORD_GUILD_ID&&(!guildsResponse.ok||!guilds.some(g=>g.id===process.env.DISCORD_GUILD_ID)))return isPopup?oauthPopupResponse(res,{ok:false,type:'OAUTH_JOIN_DISCORD',message:'Join the official HelzerX Discord server to sign in.'}):res.redirect('/?login=join-discord');
+    const mr=await fetch('https://discord.com/api/users/@me',{headers:{Authorization:'Bearer '+tok.access_token,Accept:'application/json'},signal:AbortSignal.timeout(10000)});const me=await mr.json();if(!mr.ok||!me.id)throw new Error('Discord identity lookup failed');
+    const member=ensureUser(me.id);
+    if(member.status==='suspended')return isPopup?oauthPopupResponse(res,{ok:false,message:'Account is suspended.'}):res.redirect('/?login=failed');
+    member.username=me.username;member.global_name=me.global_name||me.username;member.avatar=me.avatar||member.avatar||null;
+    if(!member.authProviders.includes('discord'))member.authProviders.push('discord');
+    if(referral&&referral!==me.id&&!member.referrer&&!member.pendingReferrer&&data.users[referral]){member.pendingReferrer=referral;data.inviteClaims.push({id:crypto.randomUUID(),referrerId:referral,inviteeId:me.id,inviteeUsername:me.username,status:'pending',createdAt:new Date().toISOString()});}
+    await new Promise((resolve,reject)=>req.session.regenerate(e=>e?reject(e):resolve()));
+    if(member.twoFactorEnabled){
+      req.session.pending2fa={userId:me.id,method:'totp',issuedAt:Date.now(),provider:'discord'};
+      writeData();
+      return req.session.save(e=>{
+        if(e)return res.status(500).send('Could not initialize 2FA challenge.');
+        return isPopup?oauthPopupResponse(res,{ok:true,type:'OAUTH_2FA_REQUIRED',message:'2FA verification required.'}):res.redirect('/?login=2fa');
+      });
+    }
+    req.session.user=buildSessionUser(member,me.id);
+    recordSecurityEvent(member,req,'oauth_discord_login','Signed in via Discord OAuth2','success');
+    writeData();
+    req.session.save(e=>{
+      if(e)return res.status(500).send('Could not create a secure session. Please try again.');
+      return isPopup?oauthPopupResponse(res,{ok:true}):res.redirect('/?login=success');
+    });
+  }catch(e){
+    console.error('[discord OAuth]',e.message);
+    return isPopup?oauthPopupResponse(res,{ok:false,message:'Discord authentication failed.'}):res.redirect('/?login=failed');
+  }
+});
 
-  const userRecord = {
+function buildGoogleAuthUrl(req,{referral='',popup=true}){
+  const cfg=resolveGoogleOAuthConfig(req);
+  if(!cfg.configured)return null;
+  const state=crypto.randomBytes(32).toString('hex');
+  const pkce=buildPkceChallenge();
+  pendingOAuth.set(state,{provider:'google',createdAt:Date.now(),referral,popup:Boolean(popup),verifier:pkce.verifier,redirectUri:cfg.redirectUri});
+  for(const [k,v] of pendingOAuth)if(Date.now()-v.createdAt>600000)pendingOAuth.delete(k);
+  const u=new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  u.searchParams.set('client_id',cfg.clientId);
+  u.searchParams.set('redirect_uri',cfg.redirectUri);
+  u.searchParams.set('response_type','code');
+  u.searchParams.set('scope','openid email profile');
+  u.searchParams.set('state',state);
+  u.searchParams.set('code_challenge',pkce.challenge);
+  u.searchParams.set('code_challenge_method','S256');
+  u.searchParams.set('prompt','select_account');
+  return u.toString();
+}
+app.get('/api/auth/google/url',(req,res)=>{
+  const cfg=resolveGoogleOAuthConfig(req);
+  res.set('Cache-Control','no-store');
+  if(!cfg.configured)return res.json({configured:false,redirectUri:cfg.redirectUri});
+  const url=buildGoogleAuthUrl(req,{referral:typeof req.query.ref==='string'?req.query.ref:'',popup:true});
+  res.json({configured:true,url,redirectUri:cfg.redirectUri});
+});
+app.get('/api/auth/google',(req,res)=>{
+  const url=buildGoogleAuthUrl(req,{referral:typeof req.query.ref==='string'?req.query.ref:'',popup:false});
+  if(!url)return res.status(503).send('Google OAuth is not configured yet.');
+  res.redirect(url);
+});
+app.get(['/api/auth/google/callback','/api/auth/google/callback/'],async(req,res)=>{
+  const {code,state,error}=req.query;
+  const issued=pendingOAuth.get(String(state||''));pendingOAuth.delete(String(state||''));
+  const isPopup=issued?Boolean(issued.popup):true;
+  if(error)return oauthPopupResponse(res,{ok:false,message:'Google sign-in was cancelled.'});
+  if(!issued||issued.provider!=='google'||Date.now()-issued.createdAt>600000||typeof code!=='string'){
+    return oauthPopupResponse(res,{ok:false,message:'Invalid or expired Google login state. Please retry.'});
+  }
+  const cfg=resolveGoogleOAuthConfig(req);
+  if(!cfg.configured)return oauthPopupResponse(res,{ok:false,message:'Google OAuth is not configured on the server.'});
+  try{
+    const form=new URLSearchParams({
+      client_id:cfg.clientId,
+      client_secret:cfg.clientSecret,
+      code,
+      code_verifier:issued.verifier,
+      grant_type:'authorization_code',
+      redirect_uri:issued.redirectUri||cfg.redirectUri
+    });
+    const tr=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json'},body:form,signal:AbortSignal.timeout(10000)});
+    const tok=await tr.json();
+    if(!tr.ok||!tok.access_token)throw new Error('Google token exchange failed');
+    const ur=await fetch('https://openidconnect.googleapis.com/v1/userinfo',{headers:{Authorization:'Bearer '+tok.access_token,Accept:'application/json'},signal:AbortSignal.timeout(10000)});
+    const profile=await ur.json();
+    if(!ur.ok||!profile.sub||!profile.email||profile.email_verified!==true){
+      return oauthPopupResponse(res,{ok:false,message:'Google account must have a verified Gmail/email address.'});
+    }
+    const parsed=normalizeEmail(profile.email);
+    if(!parsed.valid)return oauthPopupResponse(res,{ok:false,message:parsed.error});
+    let match=findUserByGoogleSub(profile.sub)||findUserByEmail(parsed.email,parsed.canonicalEmail);
+    let userId=match?.id;
+    let member=match?.user;
+    if(!member){
+      userId='usr_'+crypto.randomBytes(8).toString('hex');
+      const displayName=String(profile.name||parsed.email.split('@')[0]).trim().slice(0,64);
+      member={
+        id:userId,
+        email:parsed.email,
+        canonicalEmail:parsed.canonicalEmail,
+        emailVerified:true,
+        googleSub:profile.sub,
+        username:displayName,
+        global_name:displayName,
+        avatar:profile.picture||null,
+        authProviders:['google'],
+        balance:0,
+        verifiedInvites:0,
+        activeBoosts:0,
+        referrer:null,
+        pendingReferrer:null,
+        creditedMilestones:[],
+        sessionVersion:1,
+        twoFactorEnabled:false,
+        securityEvents:[],
+        createdAt:Date.now()
+      };
+      data.users[userId]=member;
+      if(issued.referral&&issued.referral!==userId&&data.users[issued.referral]){
+        member.pendingReferrer=issued.referral;
+        data.inviteClaims.push({id:crypto.randomUUID(),referrerId:issued.referral,inviteeId:userId,inviteeUsername:displayName,status:'pending',createdAt:new Date().toISOString()});
+      }
+      recordSecurityEvent(member,req,'account_created','Account created via Google (Gmail) OAuth','success');
+    }else{
+      ensureUser(userId);
+      if(member.status==='suspended')return oauthPopupResponse(res,{ok:false,message:'Account is suspended.'});
+      member.googleSub=profile.sub;
+      member.emailVerified=true;
+      if(!member.email)member.email=parsed.email;
+      if(!member.canonicalEmail)member.canonicalEmail=parsed.canonicalEmail;
+      if(profile.picture&&!member.avatar)member.avatar=profile.picture;
+      if(!member.authProviders.includes('google'))member.authProviders.push('google');
+    }
+    await new Promise((resolve,reject)=>req.session.regenerate(e=>e?reject(e):resolve()));
+    if(member.twoFactorEnabled){
+      req.session.pending2fa={userId,method:'totp',issuedAt:Date.now(),provider:'google'};
+      writeData();
+      return req.session.save(e=>{
+        if(e)return oauthPopupResponse(res,{ok:false,message:'Could not initialize 2FA verification.'});
+        return oauthPopupResponse(res,{ok:true,type:'OAUTH_2FA_REQUIRED',message:'Enter your 2FA code to complete Google sign-in.'});
+      });
+    }
+    req.session.user=buildSessionUser(member,userId);
+    recordSecurityEvent(member,req,'oauth_google_login',`Signed in via Google (${parsed.email})`,'success');
+    writeData();
+    req.session.save(e=>{
+      if(e)return oauthPopupResponse(res,{ok:false,message:'Could not create secure session.'});
+      return isPopup?oauthPopupResponse(res,{ok:true}):res.redirect('/?login=success');
+    });
+  }catch(e){
+    console.error('[google OAuth]',e.message);
+    return oauthPopupResponse(res,{ok:false,message:'Google sign-in failed. Please try again.'});
+  }
+});
+
+app.post('/api/auth/register',sameOriginAuthGuard,requireJsonAuth,async(req,res)=>{
+  const ip=clientIp(req);
+  const ipCheck=registerIpLimiter.check(ip);
+  if(!ipCheck.allowed){
+    res.set('Retry-After',String(ipCheck.retryAfterSeconds));
+    return res.status(429).json({error:'Too many accounts created from this network. Please try again later.'});
+  }
+  const firstName=String(req.body?.firstName||'').trim();
+  const lastName=String(req.body?.lastName||'').trim();
+  const rawEmail=String(req.body?.email||'');
+  const password=String(req.body?.password||'');
+  const referral=String(req.body?.referralCode||'').trim();
+
+  if(!firstName||firstName.length<2||firstName.length>40){
+    return res.status(400).json({error:'First name must be 2–40 characters.'});
+  }
+  if(lastName.length>40){
+    return res.status(400).json({error:'Last name must be at most 40 characters.'});
+  }
+
+  const parsedEmail=normalizeEmail(rawEmail);
+  if(!parsedEmail.valid){
+    return res.status(400).json({error:parsedEmail.error});
+  }
+
+  const fullName=(firstName+(lastName?' '+lastName:'')).trim();
+  const pwdCheck=validatePasswordStrength(password,{email:parsedEmail.email,name:fullName});
+  if(!pwdCheck.valid){
+    return res.status(400).json({error:'Password is too weak: '+pwdCheck.errors[0]+'.',requirements:pwdCheck.errors});
+  }
+
+  const existing=findUserByEmail(parsedEmail.email,parsedEmail.canonicalEmail);
+  if(existing){
+    registerIpLimiter.recordFailure(ip);
+    return res.status(409).json({error:'An account with this email address already exists. Please log in.'});
+  }
+
+  const {salt,hash:passwordHash}=hashPassword(password);
+  const id='usr_'+crypto.randomBytes(8).toString('hex');
+  const username=fullName||parsedEmail.email.split('@')[0];
+
+  const userRecord={
     id,
-    email,
+    email:parsedEmail.email,
+    canonicalEmail:parsedEmail.canonicalEmail,
+    emailVerified:true,
     salt,
     passwordHash,
     username,
-    global_name: username,
-    balance: 0,
-    verifiedInvites: 0,
-    activeBoosts: 0,
-    referrer: null,
-    pendingReferrer: null,
-    creditedMilestones: [],
-    createdAt: Date.now()
+    global_name:username,
+    authProviders:['email'],
+    balance:0,
+    verifiedInvites:0,
+    activeBoosts:0,
+    referrer:null,
+    pendingReferrer:null,
+    creditedMilestones:[],
+    sessionVersion:1,
+    twoFactorEnabled:false,
+    securityEvents:[],
+    createdAt:Date.now()
   };
 
-  data.users[id] = userRecord;
+  data.users[id]=userRecord;
 
-  if (referral && referral !== id && data.users[referral]) {
-    userRecord.pendingReferrer = referral;
+  if(referral&&referral!==id&&data.users[referral]){
+    userRecord.pendingReferrer=referral;
     data.inviteClaims.push({
-      id: crypto.randomUUID(),
-      referrerId: referral,
-      inviteeId: id,
-      inviteeUsername: username,
-      status: 'pending',
-      createdAt: new Date().toISOString()
+      id:crypto.randomUUID(),
+      referrerId:referral,
+      inviteeId:id,
+      inviteeUsername:username,
+      status:'pending',
+      createdAt:new Date().toISOString()
     });
   }
 
+  registerIpLimiter.recordFailure(ip);
+  recordSecurityEvent(userRecord,req,'account_created',`Account registered with ${parsedEmail.isGmail?'Gmail':'Email'} (${parsedEmail.email})`,'success');
   writeData();
 
-  req.session.user = {
-    id,
-    email,
-    username,
-    global_name: username,
-    avatar: null,
-    loggedAt: Date.now()
-  };
+  try{
+    await new Promise((resolve,reject)=>req.session.regenerate(e=>e?reject(e):resolve()));
+    req.session.user=buildSessionUser(userRecord,id);
+    req.session.save(e=>{
+      if(e)return res.status(500).json({error:'Failed to initialize secure session'});
+      res.status(201).json({ok:true,user:publicUser(req.session.user)});
+    });
+  }catch{
+    res.status(500).json({error:'Failed to initialize secure session'});
+  }
+});
 
-  req.session.save(e => {
-    if (e) return res.status(500).json({ error: 'Failed to initialize secure session' });
-    res.status(201).json({ ok: true, user: publicUser(req.session.user) });
+app.post('/api/auth/login',sameOriginAuthGuard,requireJsonAuth,async(req,res)=>{
+  const ip=clientIp(req);
+  const rawEmail=String(req.body?.email||'').trim().toLowerCase();
+  const password=String(req.body?.password||'');
+
+  if(!rawEmail||!password){
+    return res.status(400).json({error:'Please enter your email and password.'});
+  }
+
+  const ipGate=loginIpLimiter.check(ip);
+  if(!ipGate.allowed){
+    res.set('Retry-After',String(ipGate.retryAfterSeconds));
+    return res.status(429).json({error:'Too many failed sign-in attempts. Please wait 15 minutes before retrying.'});
+  }
+  const emailGate=loginEmailLimiter.check(rawEmail);
+  if(!emailGate.allowed){
+    res.set('Retry-After',String(emailGate.retryAfterSeconds));
+    return res.status(429).json({error:'This account is temporarily locked due to repeated failed sign-in attempts. Try again in 15 minutes.'});
+  }
+
+  const parsed=normalizeEmail(rawEmail);
+  const match=findUserByEmail(rawEmail,parsed.valid?parsed.canonicalEmail:null);
+  const foundId=match?.id;
+  const foundUser=match?.user;
+
+  if(!foundUser||!foundUser.passwordHash||!foundUser.salt){
+    loginIpLimiter.recordFailure(ip);
+    loginEmailLimiter.recordFailure(rawEmail);
+    if(foundUser&&foundUser.authProviders?.includes('google')&&!foundUser.passwordHash){
+      return res.status(401).json({error:'This account uses Google Sign-In. Continue with Google or set a password in Security Settings.'});
+    }
+    return res.status(401).json({error:'Invalid email or password.'});
+  }
+
+  if(foundUser.status==='suspended'){
+    return res.status(403).json({error:'This account has been suspended. Contact support.'});
+  }
+
+  const valid=verifyPassword(password,foundUser.passwordHash,foundUser.salt);
+  if(!valid){
+    loginIpLimiter.recordFailure(ip);
+    const failInfo=loginEmailLimiter.recordFailure(rawEmail);
+    recordSecurityEvent(foundUser,req,'login_failed','Failed password attempt','warning');
+    writeData();
+    if(failInfo.blockedUntil>Date.now()){
+      return res.status(429).json({error:'Account temporarily locked for 15 minutes after repeated failed sign-ins.'});
+    }
+    return res.status(401).json({error:'Invalid email or password.'});
+  }
+
+  loginIpLimiter.reset(ip);
+  loginEmailLimiter.reset(rawEmail);
+  ensureUser(foundId);
+
+  try{
+    await new Promise((resolve,reject)=>req.session.regenerate(e=>e?reject(e):resolve()));
+    if(foundUser.twoFactorEnabled){
+      req.session.pending2fa={userId:foundId,method:'totp',issuedAt:Date.now(),provider:'email'};
+      return req.session.save(e=>{
+        if(e)return res.status(500).json({error:'Could not initialize 2FA challenge.'});
+        res.json({ok:true,requires2fa:true,method:'totp',emailHint:foundUser.email});
+      });
+    }
+    req.session.user=buildSessionUser(foundUser,foundId);
+    recordSecurityEvent(foundUser,req,'login_success','Signed in with Email & Password','success');
+    writeData();
+    req.session.save(e=>{
+      if(e)return res.status(500).json({error:'Failed to initialize secure session'});
+      res.json({ok:true,user:publicUser(req.session.user)});
+    });
+  }catch{
+    res.status(500).json({error:'Failed to initialize secure session'});
+  }
+});
+
+app.post('/api/auth/2fa/login-verify',sameOriginAuthGuard,requireJsonAuth,async(req,res)=>{
+  const pending=req.session?.pending2fa;
+  if(!pending||!pending.userId||Date.now()-Number(pending.issuedAt||0)>10*60*1000){
+    return res.status(401).json({error:'2FA verification session expired. Please sign in again.'});
+  }
+  const limiterKey=`2fa:${pending.userId}:${clientIp(req)}`;
+  const gate=twoFaLimiter.check(limiterKey);
+  if(!gate.allowed){
+    req.session.pending2fa=null;
+    return res.status(429).json({error:'Too many invalid 2FA codes. Sign in again to restart verification.'});
+  }
+  const user=data.users[pending.userId];
+  if(!user||!user.twoFactorEnabled||!user.totpSecret){
+    return res.status(401).json({error:'Account 2FA configuration unavailable.'});
+  }
+  const code=String(req.body?.code||'').trim();
+  let verifiedMethod=null;
+  const totpResult=verifyTotpToken(user.totpSecret,code,user.lastTotpStep??null,1);
+  if(totpResult.valid){
+    user.lastTotpStep=totpResult.step;
+    verifiedMethod='totp';
+  }else{
+    const backupRes=consumeBackupCode(user.backupCodeHashes,code);
+    if(backupRes.valid)verifiedMethod='backup_code';
+  }
+  if(!verifiedMethod){
+    twoFaLimiter.recordFailure(limiterKey);
+    recordSecurityEvent(user,req,'2fa_failed','Invalid 2FA verification code entered','warning');
+    writeData();
+    return res.status(401).json({error:'Invalid 6-digit authenticator code or backup recovery code.'});
+  }
+  twoFaLimiter.reset(limiterKey);
+  const userId=pending.userId;
+  try{
+    await new Promise((resolve,reject)=>req.session.regenerate(e=>e?reject(e):resolve()));
+    req.session.user=buildSessionUser(user,userId);
+    recordSecurityEvent(user,req,verifiedMethod==='backup_code'?'2fa_backup_used':'login_success',verifiedMethod==='backup_code'?'Signed in using a one-time 2FA recovery code':'Signed in with 2FA Authenticator verification','success');
+    writeData();
+    req.session.save(e=>{
+      if(e)return res.status(500).json({error:'Failed to initialize secure session'});
+      res.json({ok:true,user:publicUser(req.session.user),usedBackupCode:verifiedMethod==='backup_code'});
+    });
+  }catch{
+    res.status(500).json({error:'Failed to initialize secure session'});
+  }
+});
+
+app.get('/api/auth/2fa/pending',(req,res)=>{
+  const pending=req.session?.pending2fa;
+  res.set('Cache-Control','no-store');
+  if(!pending||Date.now()-Number(pending.issuedAt||0)>10*60*1000){
+    return res.json({pending:false});
+  }
+  const user=data.users[pending.userId];
+  res.json({pending:true,emailHint:user?.email||user?.username||'Account'});
+});
+
+app.get('/api/auth/security',auth,(req,res)=>{
+  const u=ensureUser(req.session.user.id);
+  const backupRemaining=Array.isArray(u.backupCodeHashes)?u.backupCodeHashes.filter(c=>c&&!c.usedAt).length:0;
+  res.set('Cache-Control','no-store');
+  res.json({
+    id:req.session.user.id,
+    email:u.email||null,
+    emailVerified:Boolean(u.emailVerified),
+    authProviders:u.authProviders,
+    passwordSet:Boolean(u.passwordHash&&u.salt),
+    twoFactorEnabled:Boolean(u.twoFactorEnabled),
+    backupCodesRemaining:backupRemaining,
+    sessionVersion:u.sessionVersion,
+    securityEvents:u.securityEvents.slice(0,20)
   });
 });
 
-app.post('/api/auth/login', (req, res) => {
-  const email = String(req.body?.email || '').trim().toLowerCase();
-  const password = String(req.body?.password || '');
+app.post('/api/auth/2fa/setup',auth,sameOriginAuthGuard,requireJsonAuth,async(req,res)=>{
+  const u=ensureUser(req.session.user.id);
+  if(u.twoFactorEnabled)return res.status(409).json({error:'Two-factor authentication is already enabled.'});
+  const secret=generateTotpSecret();
+  const payload=await buildTotpSetupPayload({secret,accountLabel:u.email||u.username||req.session.user.id});
+  req.session.pending2faSetup={secret,createdAt:Date.now()};
+  req.session.save(e=>{
+    if(e)return res.status(500).json({error:'Could not store 2FA setup state.'});
+    res.json({ok:true,secret,qrDataUrl:payload.qrDataUrl,otpauthUrl:payload.otpauthUrl});
+  });
+});
 
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Please enter your email and password.' });
+app.post('/api/auth/2fa/enable',auth,sameOriginAuthGuard,requireJsonAuth,(req,res)=>{
+  const u=ensureUser(req.session.user.id);
+  const setup=req.session.pending2faSetup;
+  if(!setup||!setup.secret||Date.now()-Number(setup.createdAt||0)>15*60*1000){
+    return res.status(400).json({error:'2FA setup expired. Click Generate Secret again.'});
   }
+  const code=String(req.body?.code||'').trim();
+  const check=verifyTotpToken(setup.secret,code,null,1);
+  if(!check.valid){
+    return res.status(400).json({error:'Invalid 6-digit code. Check your authenticator app clock and try again.'});
+  }
+  const {plainCodes,hashedCodes}=generateBackupCodes(8);
+  u.totpSecret=setup.secret;
+  u.twoFactorEnabled=true;
+  u.lastTotpStep=check.step;
+  u.backupCodeHashes=hashedCodes;
+  req.session.pending2faSetup=null;
+  recordSecurityEvent(u,req,'2fa_enabled','Enabled TOTP Two-Factor Authentication','success');
+  writeData();
+  res.json({ok:true,backupCodes:plainCodes});
+});
 
-  let foundUser = null;
-  for (const [, u] of Object.entries(data.users)) {
-    if (u.email && u.email.toLowerCase() === email) {
-      foundUser = u;
-      break;
+app.post('/api/auth/2fa/disable',auth,sameOriginAuthGuard,requireJsonAuth,(req,res)=>{
+  const u=ensureUser(req.session.user.id);
+  if(!u.twoFactorEnabled)return res.status(400).json({error:'Two-factor authentication is not enabled.'});
+  const password=String(req.body?.password||'');
+  const code=String(req.body?.code||'').trim();
+  if(u.passwordHash&&u.salt){
+    if(!verifyPassword(password,u.passwordHash,u.salt)){
+      return res.status(401).json({error:'Current password is incorrect.'});
     }
   }
-
-  if (!foundUser || !foundUser.passwordHash || !foundUser.salt) {
-    return res.status(401).json({ error: 'Invalid email or password.' });
+  const totpRes=verifyTotpToken(u.totpSecret,code,u.lastTotpStep??null,1);
+  if(!totpRes.valid){
+    return res.status(401).json({error:'Enter a valid current 6-digit 2FA code to disable 2FA.'});
   }
+  u.twoFactorEnabled=false;
+  u.totpSecret=null;
+  u.lastTotpStep=null;
+  u.backupCodeHashes=[];
+  recordSecurityEvent(u,req,'2fa_disabled','Disabled TOTP Two-Factor Authentication','warning');
+  writeData();
+  res.json({ok:true});
+});
 
-  const hashToTest = hashPassword(password, foundUser.salt);
-  if (hashToTest !== foundUser.passwordHash) {
-    return res.status(401).json({ error: 'Invalid email or password.' });
+app.post('/api/auth/2fa/backup-codes',auth,sameOriginAuthGuard,requireJsonAuth,(req,res)=>{
+  const u=ensureUser(req.session.user.id);
+  if(!u.twoFactorEnabled)return res.status(400).json({error:'Enable 2FA first before generating backup codes.'});
+  const code=String(req.body?.code||'').trim();
+  const check=verifyTotpToken(u.totpSecret,code,u.lastTotpStep??null,1);
+  if(!check.valid)return res.status(401).json({error:'Enter a valid 6-digit 2FA code to regenerate backup codes.'});
+  u.lastTotpStep=check.step;
+  const {plainCodes,hashedCodes}=generateBackupCodes(8);
+  u.backupCodeHashes=hashedCodes;
+  recordSecurityEvent(u,req,'2fa_backup_regenerated','Regenerated 8 backup recovery codes','info');
+  writeData();
+  res.json({ok:true,backupCodes:plainCodes});
+});
+
+app.post('/api/auth/password/change',auth,sameOriginAuthGuard,requireJsonAuth,(req,res)=>{
+  const u=ensureUser(req.session.user.id);
+  const currentPassword=String(req.body?.currentPassword||'');
+  const newPassword=String(req.body?.newPassword||'');
+  if(u.passwordHash&&u.salt){
+    if(!currentPassword||!verifyPassword(currentPassword,u.passwordHash,u.salt)){
+      return res.status(401).json({error:'Current password is incorrect.'});
+    }
   }
-
-  req.session.user = {
-    id: foundUser.id,
-    email: foundUser.email,
-    username: foundUser.username,
-    global_name: foundUser.global_name || foundUser.username,
-    avatar: foundUser.avatar || null,
-    loggedAt: Date.now()
-  };
-
-  req.session.save(e => {
-    if (e) return res.status(500).json({ error: 'Failed to initialize secure session' });
-    res.json({ ok: true, user: publicUser(req.session.user) });
+  const check=validatePasswordStrength(newPassword,{email:u.email,name:u.username});
+  if(!check.valid){
+    return res.status(400).json({error:'New password is too weak: '+check.errors[0]+'.',requirements:check.errors});
+  }
+  const {salt,hash}=hashPassword(newPassword);
+  u.salt=salt;
+  u.passwordHash=hash;
+  if(!u.authProviders.includes('email'))u.authProviders.push('email');
+  u.sessionVersion=(Number(u.sessionVersion)||1)+1;
+  req.session.user.sessionVersion=u.sessionVersion;
+  recordSecurityEvent(u,req,'password_changed','Password updated & older device sessions rotated','success');
+  writeData();
+  req.session.save(e=>{
+    if(e)return res.status(500).json({error:'Password updated but session refresh failed.'});
+    res.json({ok:true,message:'Password updated securely. All other sessions have been signed out.'});
   });
 });
 
-app.post('/api/auth/logout', (req, res) => req.session.destroy(e => {
-  res.clearCookie('hx_freehost_sid', { httpOnly: true, secure: prod, sameSite: 'lax' });
-  if (e) return res.status(500).json({ error: 'Logout failed' });
-  res.json({ ok: true });
+app.post('/api/auth/sessions/revoke-all',auth,sameOriginAuthGuard,requireJsonAuth,(req,res)=>{
+  const u=ensureUser(req.session.user.id);
+  u.sessionVersion=(Number(u.sessionVersion)||1)+1;
+  recordSecurityEvent(u,req,'sessions_revoked','Signed out all active browser sessions','warning');
+  writeData();
+  req.session.destroy(e=>{
+    res.clearCookie('hx_freehost_sid',{httpOnly:true,secure:'auto',sameSite:'lax'});
+    if(e)return res.status(500).json({error:'Failed to revoke current session.'});
+    res.json({ok:true,message:'All active sessions signed out.'});
+  });
+});
+
+app.post('/api/auth/logout',sameOriginAuthGuard,(req,res)=>req.session.destroy(e=>{
+  res.clearCookie('hx_freehost_sid',{httpOnly:true,secure:'auto',sameSite:'lax'});
+  if(e)return res.status(500).json({error:'Logout failed'});
+  res.json({ok:true});
 }));
 app.get('/api/me',auth,async(req,res)=>{res.set('Cache-Control','no-store');res.json({user:publicUser(req.session.user),rewards:await rewardsFor(req.session.user)});});
 app.get('/api/rewards',auth,async(req,res)=>{res.set('Cache-Control','no-store');res.json(await rewardsFor(req.session.user));});
-app.get('/api/invites',auth,(req,res)=>{const u=ensureUser(req.session.user.id);res.set('Cache-Control','no-store');res.json({referralCode:req.session.user.id,referralUrl:(process.env.APP_URL||'https://free.helzerx.cyou')+'/?ref='+encodeURIComponent(req.session.user.id),verifiedInvites:u.verifiedInvites,pendingInvites:data.inviteClaims.filter(c=>c.referrerId===req.session.user.id&&c.status==='pending').length,creditedMilestones:u.creditedMilestones});});
+app.get('/api/invites',auth,(req,res)=>{const u=ensureUser(req.session.user.id);res.set('Cache-Control','no-store');res.json({referralCode:req.session.user.id,referralUrl:(process.env.APP_URL||'https://perks.helzerx.cyou')+'/?ref='+encodeURIComponent(req.session.user.id),verifiedInvites:u.verifiedInvites,pendingInvites:data.inviteClaims.filter(c=>c.referrerId===req.session.user.id&&c.status==='pending').length,creditedMilestones:u.creditedMilestones});});
 function configuredVpsNodes(){
  let list=[];try{list=JSON.parse(process.env.PROXMOX_NODES||'[]')}catch{}
  if(!Array.isArray(list)||!list.length)list=[{id:String(process.env.PROXMOX_NODE||'hlx-infra-02'),label:String(process.env.PROXMOX_NODE||'hlx-infra-02'),surcharge:0}];

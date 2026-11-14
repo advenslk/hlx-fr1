@@ -2034,6 +2034,10 @@ html, body {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M8 10h8"/></svg>
             <span>HZL Rewards</span>
           </a>
+          <a class="user-menu-item" href="/#security">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span>Security & 2FA</span>
+          </a>
           <a class="user-menu-item" href="https://discord.com/" target="_blank" rel="noopener noreferrer">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
             <span>Discord Support</span>
@@ -3205,7 +3209,7 @@ async function loadDashboardData() {
     const name = user.global_name || user.username || 'Member';
     $('welcomeGreeting').textContent = 'Hi, ' + name + '!';
     $('menuUserName').textContent = name;
-    $('menuUserId').textContent = user.id ? 'ID: ' + user.id : 'Connected';
+    $('menuUserId').textContent = (user.email ? user.email + ' · ' : '') + (user.twoFactorEnabled ? '2FA Active' : (user.id ? 'ID: ' + user.id : 'Connected'));
 
     currentUserBalance = Number(rewards.balance || 0);
     $('hzlBalancePill').textContent = currentUserBalance.toLocaleString() + ' HZL Balance';
@@ -3628,7 +3632,7 @@ $('upgradeProBtn').addEventListener('click', () => {
 
 $('btnLogout').addEventListener('click', async () => {
   try {
-    await api('/api/auth/logout', { method: 'POST' });
+    await api('/api/auth/logout', { method: 'POST', body: '{}' });
     location.href = '/?login=required';
   } catch {
     location.href = '/';
