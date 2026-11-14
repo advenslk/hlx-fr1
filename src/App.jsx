@@ -496,7 +496,7 @@ export default function App() {
     }
   }
 
-  // Mouse tilt helper for 3D bento cards
+  // Mouse tilt helper for 3D cards & depth layers
   const handleCardMouseMove = (e) => {
     const card = e.currentTarget;
     const rect = card.getBoundingClientRect();
@@ -504,16 +504,20 @@ export default function App() {
     const y = e.clientY - rect.top;
     const px = (x / rect.width) - 0.5;
     const py = (y / rect.height) - 0.5;
-    const rx = (-py * 10).toFixed(2);
-    const ry = (px * 10).toFixed(2);
+    const rx = (-py * 13).toFixed(2);
+    const ry = (px * 13).toFixed(2);
     card.style.setProperty('--mouse-x', `${x}px`);
     card.style.setProperty('--mouse-y', `${y}px`);
+    card.style.setProperty('--px', px.toFixed(3));
+    card.style.setProperty('--py', py.toFixed(3));
     card.style.setProperty('--rx', `${rx}deg`);
     card.style.setProperty('--ry', `${ry}deg`);
   };
 
   const handleCardMouseLeave = (e) => {
     const card = e.currentTarget;
+    card.style.setProperty('--px', '0');
+    card.style.setProperty('--py', '0');
     card.style.setProperty('--rx', '0deg');
     card.style.setProperty('--ry', '0deg');
   };
@@ -651,7 +655,7 @@ export default function App() {
 
           {/* KPI Stats Strip */}
           <section className="stats-grid" aria-label="Account Overview Stats">
-            <div className="stat-box highlight">
+            <div className="stat-box highlight" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
               <div className="stat-box-label">
                 <span>Available Balance</span>
                 <Coins size={14} color="var(--accent-gold)" />
@@ -660,7 +664,7 @@ export default function App() {
               <div className="stat-box-sub">{rewards?.connected ? 'Attributed on official ledger' : 'Ready for redemption'}</div>
             </div>
 
-            <div className="stat-box">
+            <div className="stat-box" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
               <div className="stat-box-label">
                 <span>Verified Invites</span>
                 <Users size={14} />
@@ -671,7 +675,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="stat-box">
+            <div className="stat-box" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
               <div className="stat-box-label">
                 <span>Server Boosts</span>
                 <Zap size={14} />
@@ -680,7 +684,7 @@ export default function App() {
               <div className="stat-box-sub">Active community boosts</div>
             </div>
 
-            <div className="stat-box">
+            <div className="stat-box" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
               <div className="stat-box-label">
                 <span>Active Servers</span>
                 <Server size={14} />
@@ -758,7 +762,7 @@ export default function App() {
                       : (hostingProvisioning.ready && canAfford && !busy);
 
                     return (
-                      <article className="plan-card" key={plan.id} onMouseMove={handleCardMouseMove} style={isMc ? { borderColor: 'rgba(168, 85, 247, 0.25)' } : {}}>
+                      <article className="plan-card" key={plan.id} onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave} style={isMc ? { borderColor: 'rgba(168, 85, 247, 0.25)' } : {}}>
                         <div className="plan-top">
                           <span className="plan-service-tag" style={isMc ? { color: '#c084fc', borderColor: 'rgba(168, 85, 247, 0.3)' } : {}}>
                             {isMc ? 'MINECRAFT · PTERODACTYL' : 'PROXMOX LINUX CONTAINER'}
@@ -944,7 +948,7 @@ export default function App() {
                 {(rewards?.inviteTiers || defaultInviteTiers).map(([count, amount]) => {
                   const achieved = (invite?.verifiedInvites || 0) >= count;
                   return (
-                    <article className={`tier-card ${achieved ? 'featured' : ''}`} key={count}>
+                    <article className={`tier-card ${achieved ? 'featured' : ''}`} key={count} onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
                       <div className="tier-header">
                         <span className="tier-badge">TIER {count}</span>
                         {achieved && <span style={{ color: '#2ecc71', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}><Check size={12} /> Achieved</span>}
@@ -1005,7 +1009,7 @@ export default function App() {
               <div className="section-label" style={{ marginTop: '16px' }}>Active Boost Rewards Schedule</div>
               <div className="tiers-grid">
                 {(rewards?.boostTiers || defaultBoostTiers).map(([count, amount]) => (
-                  <article className="tier-card" key={count}>
+                  <article className="tier-card" key={count} onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
                     <div className="tier-header">
                       <span className="tier-badge">{count} BOOST{count > 1 ? 'S' : ''}</span>
                     </div>
@@ -1191,7 +1195,7 @@ export default function App() {
           </section>
 
           {/* SPECIAL OFFER SECTION */}
-          <section className="special-offer-section" id="rewards">
+          <section className="special-offer-section" id="rewards" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
             <div className="section-label">COMMUNITY PRIVILEGES</div>
             <h2 className="special-offer-title">
               SPECIAL ACCESS FOR<br />COMMUNITY SUPPORTERS
@@ -1227,39 +1231,38 @@ export default function App() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px', alignItems: 'center' }}>
-              <div style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', border: '1px solid var(--card-border)', height: '340px' }}>
-                <img 
-                  src="/images/datacenter.jpg" 
-                  alt="HelzerX datacenter racks with optical indicators" 
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            <div className="infra-showcase-grid">
+              <div className="infra-photo-frame" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
+                <img
+                  src="/images/datacenter.jpg"
+                  alt="HelzerX datacenter racks with optical indicators"
                   referrerPolicy="no-referrer"
                 />
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 'var(--radius-md)', padding: '20px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+              <div className="infra-cards-col">
+                <div className="hardware-card" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
+                  <div className="hardware-card-head">
                     <HardDrive size={16} color="var(--accent-gold)" />
-                    <b style={{ color: '#fff', fontSize: '14px' }}>NVMe Flash Storage</b>
+                    <b>NVMe Flash Storage</b>
                   </div>
-                  <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>High IOPS random access for Minecraft world saves and Linux container databases without disk bottlenecks.</p>
+                  <p>High IOPS random access for Minecraft world saves and Linux container databases without disk bottlenecks.</p>
                 </div>
 
-                <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 'var(--radius-md)', padding: '20px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                <div className="hardware-card" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
+                  <div className="hardware-card-head">
                     <Cpu size={16} color="var(--accent-gold)" />
-                    <b style={{ color: '#fff', fontSize: '14px' }}>Proxmox VE Virtualization</b>
+                    <b>Proxmox VE Virtualization</b>
                   </div>
-                  <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Kernel-level LXC isolation with zero virtualization hypervisor overhead for near-native compute speeds.</p>
+                  <p>Kernel-level LXC isolation with zero virtualization hypervisor overhead for near-native compute speeds.</p>
                 </div>
 
-                <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 'var(--radius-md)', padding: '20px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                <div className="hardware-card" onMouseMove={handleCardMouseMove} onMouseLeave={handleCardMouseLeave}>
+                  <div className="hardware-card-head">
                     <Shield size={16} color="var(--accent-gold)" />
-                    <b style={{ color: '#fff', fontSize: '14px' }}>SSH Key Access Only</b>
+                    <b>SSH Key Access Only</b>
                   </div>
-                  <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Strict asymmetric cryptography. Passwords are never sent across the wire or stored on disk.</p>
+                  <p>Strict asymmetric cryptography. Passwords are never sent across the wire or stored on disk.</p>
                 </div>
               </div>
             </div>
@@ -1292,26 +1295,18 @@ export default function App() {
                   </div>
                 </div>
 
-                <div>
-                  <div className="auth-steps-list">
-                    <div className={`auth-step-pill ${authStep === 'form' ? 'active' : 'inactive'}`}>
-                      <span className="auth-step-num">1</span>
-                      <span>{authMode === 'signup' ? 'Gmail / OAuth Registration' : 'Verify Account Credentials'}</span>
-                    </div>
-                    <div className={`auth-step-pill ${authStep === '2fa' ? 'active' : 'inactive'}`}>
-                      <span className="auth-step-num">2</span>
-                      <span>2FA & Session Encryption</span>
-                    </div>
-                    <div className="auth-step-pill inactive">
-                      <span className="auth-step-num">3</span>
-                      <span>Launch VPS & Minecraft Nodes</span>
-                    </div>
+                <div className="auth-steps-list">
+                  <div className={`auth-step-pill ${authStep === 'form' ? 'active' : 'inactive'}`}>
+                    <span className="auth-step-num">1</span>
+                    <span>{authMode === 'signup' ? 'Gmail / OAuth Registration' : 'Verify Account Credentials'}</span>
                   </div>
-
-                  <div className="auth-security-badges">
-                    <span className="auth-sec-chip"><Lock size={11} /> Scrypt + Timing-Safe</span>
-                    <span className="auth-sec-chip"><ShieldCheck size={11} /> TOTP 2FA Ready</span>
-                    <span className="auth-sec-chip"><Shield size={11} /> Brute-Force Guard</span>
+                  <div className={`auth-step-pill ${authStep === '2fa' ? 'active' : 'inactive'}`}>
+                    <span className="auth-step-num">2</span>
+                    <span>2FA & Session Encryption</span>
+                  </div>
+                  <div className="auth-step-pill inactive">
+                    <span className="auth-step-num">3</span>
+                    <span>Launch VPS & Minecraft Nodes</span>
                   </div>
                 </div>
               </div>
@@ -1398,10 +1393,10 @@ export default function App() {
                         type="button"
                         className="auth-social-btn"
                         onClick={handleGoogleAuth}
-                        title={authProviders.googleConfigured ? 'Continue with Google (Gmail) OAuth' : 'Use Gmail Sign-In'}
+                        title={authProviders.googleConfigured ? 'Continue with Google OAuth' : 'Continue with Google'}
                       >
                         <GoogleIcon size={17} />
-                        <span>Google (Gmail)</span>
+                        <span>Google</span>
                       </button>
                       <button
                         type="button"

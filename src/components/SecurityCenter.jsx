@@ -238,6 +238,25 @@ export default function SecurityCenter({ me, securityInfo, onRefreshSecurity, on
     URL.revokeObjectURL(url);
   }
 
+  const handleSecCardMove = (e) => {
+    const card = e.currentTarget;
+    const rect = card.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const px = (x / rect.width) - 0.5;
+    const py = (y / rect.height) - 0.5;
+    card.style.setProperty('--mouse-x', `${x}px`);
+    card.style.setProperty('--mouse-y', `${y}px`);
+    card.style.setProperty('--rx', `${(-py * 8).toFixed(2)}deg`);
+    card.style.setProperty('--ry', `${(px * 8).toFixed(2)}deg`);
+  };
+
+  const handleSecCardLeave = (e) => {
+    const card = e.currentTarget;
+    card.style.setProperty('--rx', '0deg');
+    card.style.setProperty('--ry', '0deg');
+  };
+
   return (
     <section className="services-section" id="security">
       <div className="services-head">
@@ -262,7 +281,7 @@ export default function SecurityCenter({ me, securityInfo, onRefreshSecurity, on
 
       <div className="security-grid">
         {/* CARD 1: Identity & Two-Factor Authentication */}
-        <article className="security-card">
+        <article className="security-card" onMouseMove={handleSecCardMove} onMouseLeave={handleSecCardLeave}>
           <div className="security-card-head">
             <div>
               <h3>Two-Factor Authentication (2FA)</h3>
@@ -462,7 +481,7 @@ export default function SecurityCenter({ me, securityInfo, onRefreshSecurity, on
         </article>
 
         {/* CARD 2: Password & Session Management */}
-        <article className="security-card">
+        <article className="security-card" onMouseMove={handleSecCardMove} onMouseLeave={handleSecCardLeave}>
           <div className="security-card-head">
             <div>
               <h3>{securityInfo?.passwordSet ? 'Change Account Password' : 'Set Account Password'}</h3>
