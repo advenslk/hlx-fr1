@@ -124,6 +124,7 @@ export async function listMinecraftNodes({ fetchFn = globalThis.fetch, envMap = 
 export async function provisionMinecraftServer({
   plan,
   user,
+  panelEmail = '',
   serverName,
   displayName,
   eggId,
@@ -158,9 +159,9 @@ export async function provisionMinecraftServer({
     throw new Error('Selected Pterodactyl datacenter node was not found.');
   }
 
-  const userEmail = String(user?.email || '').trim();
-  if (!userEmail) {
-    throw new Error('A valid account email address is required on your profile before creating a Pterodactyl panel user.');
+  const userEmail = String(panelEmail || user?.email || '').trim().toLowerCase();
+  if (!userEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail)) {
+    throw new Error('A valid Pterodactyl panel email address is required. Register at https://spg.helzerx.cyou or link the same Discord/Google email.');
   }
 
   // 1. Lookup or create Pterodactyl Application user
@@ -182,7 +183,8 @@ export async function provisionMinecraftServer({
   }
 
   if (!pteroUserId) {
-    const baseUsername = String(user?.username || 'member')
+    const emailLocal = userEmail.split('@')[0] || '';
+    const baseUsername = String(user?.username || emailLocal || 'member')
       .toLowerCase()
       .replace(/[^a-z0-9_.-]/g, '')
       .slice(0, 16) || 'member';
@@ -196,7 +198,7 @@ export async function provisionMinecraftServer({
       body: JSON.stringify({
         username: `${baseUsername}_${String(user?.id || '').slice(-4) || Math.floor(1000 + Math.random() * 9000)}`,
         email: userEmail,
-        first_name: String(user?.global_name || user?.username || 'HelzerX').slice(0, 32),
+        first_name: String(user?.global_name || user?.username || emailLocal || 'HelzerX').slice(0, 32),
         last_name: 'Member'
       }),
       signal: AbortSignal.timeout(10000)
@@ -276,6 +278,7 @@ export async function provisionMinecraftServer({
     node: selectedNode.label,
     egg: selectedEgg.label,
     panelUrl: `${publicBase}/server/${attr.identifier}`,
+    assignedEmail: userEmail,
     memoryMb,
     cpuPercent,
     diskMb,

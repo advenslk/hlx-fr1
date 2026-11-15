@@ -1,10 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Server, X, ChevronDown, Sparkles, CreditCard, Tag, Wallet } from 'lucide-react';
+import {
+  Box,
+  Server,
+  X,
+  ChevronDown,
+  Sparkles,
+  CreditCard,
+  Tag,
+  Wallet,
+  Mail,
+  ExternalLink,
+  CheckCircle2,
+  ShieldCheck
+} from 'lucide-react';
+import mcBackdropImg from '../assets/images/minecraft_deploy_bg_1794706744000.jpg';
 import './MinecraftDeployModal.css';
 
 const money = n => new Intl.NumberFormat('en-US').format(Number(n) || 0);
 const usd = cents => '$' + (Number(cents || 0) / 100).toFixed(2);
 const lkr = (cents, rate = 300) => 'Rs. ' + money(Math.round((Number(cents || 0) / 100) * Number(rate || 300)));
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function getPlanCycleCents(plan, cycle) {
   const baseHzl = Math.max(100, Number(plan?.cost || 500));
@@ -23,6 +39,8 @@ export default function MinecraftDeployModal({
   plan,
   eggs = [],
   nodes = [],
+  me = null,
+  panelUrl = 'https://spg.helzerx.cyou',
   balance = 0,
   walletCents = 0,
   usdToLkrRate = 300,
@@ -34,9 +52,19 @@ export default function MinecraftDeployModal({
   onValidatePromo,
   onOpenBilling
 }) {
+  const linkedEmail = String(me?.email || '').trim().toLowerCase();
+  const providers = Array.isArray(me?.authProviders) ? me.authProviders : [];
+  const hasLinkedSocial = Boolean(
+    me?.discordLinked || providers.some(p => p === 'discord' || p === 'google')
+  );
+  const canAutoMatch = Boolean(linkedEmail && EMAIL_RE.test(linkedEmail) && hasLinkedSocial);
+  const normalizedPanelUrl = String(panelUrl || 'https://spg.helzerx.cyou').replace(/\/+$/, '');
+
   const [name, setName] = useState('');
   const [eggId, setEggId] = useState(eggs[0]?.id || '');
   const [nodeId, setNodeId] = useState(nodes[0]?.id || '');
+  const [useLinkedAccount, setUseLinkedAccount] = useState(canAutoMatch);
+  const [panelEmail, setPanelEmail] = useState(linkedEmail);
 
   // Paid billing state
   const [checkoutType, setCheckoutType] = useState(initialCheckoutType);
@@ -53,6 +81,8 @@ export default function MinecraftDeployModal({
     setName('');
     setEggId(eggs[0]?.id || '');
     setNodeId(nodes[0]?.id || '');
+    setUseLinkedAccount(canAutoMatch);
+    setPanelEmail(linkedEmail);
     const effectiveMode = plan.billingMode === 'paid'
       ? 'paid'
       : plan.billingMode === 'hzl'
@@ -65,7 +95,7 @@ export default function MinecraftDeployModal({
     setPromoMsg('');
     setUseHzlCredit(false);
     setAutoRenew(true);
-  }, [plan?.id, initialCheckoutType, initialCycle]);
+  }, [plan?.id, initialCheckoutType, initialCycle, linkedEmail, canAutoMatch]);
 
   useEffect(() => {
     setAppliedPromo(null);
@@ -84,10 +114,12 @@ export default function MinecraftDeployModal({
   const hzlUsed = hzlDiscountCents * 10;
   const finalTotalCents = Math.max(0, afterPromoCents - hzlDiscountCents);
 
+  const effectivePanelEmail = (useLinkedAccount && canAutoMatch ? linkedEmail : panelEmail).trim().toLowerCase();
+  const validPanelEmail = EMAIL_RE.test(effectivePanelEmail);
   const canAfford = isPaid ? Number(walletCents) >= finalTotalCents : Number(balance) >= cost;
   const validName = /^[a-z0-9](?:[a-z0-9_-]{0,28}[a-z0-9])?$/i.test(name) && name.length >= 2;
   const hasCatalog = Boolean(eggId && nodeId && eggs.some(e => e.id === eggId) && nodes.some(n => n.id === nodeId));
-  const canSubmit = validName && hasCatalog && canAfford && !busy;
+  const canSubmit = validName && validPanelEmail && hasCatalog && canAfford && !busy;
 
   const currentEgg = eggs.find(e => e.id === eggId) || null;
   const currentNode = nodes.find(n => n.id === nodeId) || null;
@@ -132,6 +164,7 @@ export default function MinecraftDeployModal({
         displayName: name,
         eggId,
         nodeId,
+        panelEmail: effectivePanelEmail,
         billingCycle,
         promoCode: appliedPromo?.code || '',
         useHzlCredit,
@@ -142,7 +175,8 @@ export default function MinecraftDeployModal({
         checkoutType: 'hzl',
         displayName: name,
         eggId,
-        nodeId
+        nodeId,
+        panelEmail: effectivePanelEmail
       });
     }
   }
@@ -163,7 +197,7 @@ export default function MinecraftDeployModal({
         <div className="mc-modal-ambient" />
         <header className="mc-modal-header">
           <div className="mc-modal-kicker">
-            <i className="mc-live-dot" /> PTERODACTYL ENGINE <span style={{ opacity: 0.5 }}>/</span> {isPaid ? 'PAID MINECRAFT HOSTING' : 'MINECRAFT CLOUD'}
+            PTERODACTYL ENGINE <span style={{ opacity: 0.4 }}>/</span> {isPaid ? 'PAID MINECRAFT HOSTING' : 'MINECRAFT CLOUD'}
           </div>
           <button
             className="mc-modal-close"
@@ -179,13 +213,94 @@ export default function MinecraftDeployModal({
           </h2>
           <p>
             {isPaid
-              ? 'Powered by Pterodactyl container orchestration. Instant wallet settlement with recurring renewals and numbered invoices.'
-              : 'Powered by Pterodactyl container orchestration. Redeem your verified HZL credits for dedicated game hosting.'}
+              ? 'Isolated Pterodactyl container orchestration with dedicated NVMe storage, automatic port allocation, and instant wallet billing.'
+              : 'Isolated Pterodactyl container orchestration powered by your verified HZL rewards balance.'}
           </p>
         </header>
 
         <form onSubmit={handleSubmit} className="mc-modal-layout">
           <div className="mc-config-fields">
+            {/* Panel Account Pre-Requirement & Auto-Match Steps */}
+            <div className="mc-panel-steps">
+              <div className="mc-panel-steps-head">
+                <div className="mc-panel-steps-title">
+                  <ShieldCheck size={15} />
+                  <span>Panel Account Linking Required</span>
+                </div>
+                <a
+                  href={normalizedPanelUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mc-panel-open-link"
+                >
+                  Open spg.helzerx.cyou <ExternalLink size={12} />
+                </a>
+              </div>
+
+              <ol className="mc-step-list">
+                <li>
+                  <span>Register or sign in at </span>
+                  <a href={normalizedPanelUrl} target="_blank" rel="noopener noreferrer">
+                    {normalizedPanelUrl}
+                  </a>
+                  <span> before creating your server.</span>
+                </li>
+                <li>
+                  <span>Enter that exact registered panel email below — your server is assigned directly to that account.</span>
+                </li>
+                <li>
+                  <strong>Linked with Discord or Google?</strong>{' '}
+                  <span>
+                    If you signed into <code>spg.helzerx.cyou</code> using the same Discord or Google account linked here, you do not need to re-register — your server attaches automatically.
+                  </span>
+                </li>
+              </ol>
+
+              {canAutoMatch && (
+                <label className="mc-automatch-toggle">
+                  <input
+                    type="checkbox"
+                    checked={useLinkedAccount}
+                    onChange={e => {
+                      const next = e.target.checked;
+                      setUseLinkedAccount(next);
+                      if (next) setPanelEmail(linkedEmail);
+                    }}
+                  />
+                  <div>
+                    <strong>Auto-assign via linked {me?.discordLinked ? 'Discord' : 'Google'} account</strong>
+                    <small>{linkedEmail} · No extra registration needed if matched on SPG panel</small>
+                  </div>
+                  <CheckCircle2 size={15} className={useLinkedAccount ? 'mc-check-active' : 'mc-check-muted'} />
+                </label>
+              )}
+
+              <label className="mc-field" style={{ marginTop: '4px' }}>
+                <span>
+                  <Mail size={13} /> REGISTERED PANEL EMAIL (SPG.HELZERX.CYOU)
+                </span>
+                <input
+                  type="email"
+                  value={useLinkedAccount && canAutoMatch ? linkedEmail : panelEmail}
+                  onChange={e => {
+                    if (useLinkedAccount) setUseLinkedAccount(false);
+                    setPanelEmail(e.target.value);
+                  }}
+                  readOnly={useLinkedAccount && canAutoMatch}
+                  placeholder="player@gmail.com"
+                  autoComplete="email"
+                  required
+                />
+                <small className={effectivePanelEmail && !validPanelEmail ? 'mc-field-error' : 'mc-field-hint'}>
+                  {effectivePanelEmail && !validPanelEmail
+                    ? 'Enter a valid email address registered at https://spg.helzerx.cyou.'
+                    : useLinkedAccount && canAutoMatch
+                    ? `Matched automatically with your linked account (${linkedEmail}). Uncheck above to use another panel email.`
+                    : 'Your Minecraft instance will be assigned to this panel account email.'}
+                </small>
+              </label>
+            </div>
+
             {plan.billingMode === 'both' && (
               <div className="mc-field">
                 <span><CreditCard size={13} /> PAYMENT MODE</span>
@@ -238,53 +353,45 @@ export default function MinecraftDeployModal({
               <small className={name && !validName ? 'mc-field-error' : 'mc-field-hint'}>
                 {name && !validName
                   ? 'Use 2–26 lowercase letters, numbers, or hyphens.'
-                  : 'Your server identifier and in-game MOTD host.'}
+                  : 'Your server identifier and in-game host label.'}
               </small>
             </label>
 
-            <label className="mc-field">
-              <span>
-                <Box size={13} /> SERVER SOFTWARE (EGG)
-              </span>
-              <div className="mc-select-wrap">
-                <select value={eggId} onChange={e => setEggId(e.target.value)} disabled={!eggs.length}>
-                  {!eggs.length && <option value="">No Pterodactyl eggs available</option>}
-                  {eggs.map(egg => (
-                    <option key={egg.id} value={egg.id}>
-                      {egg.label || egg.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={15} />
-              </div>
-              <small className={eggs.length ? 'mc-field-hint' : 'mc-field-error'}>
-                {eggs.length
-                  ? 'Live Pterodactyl panel container runtime image.'
-                  : 'Pterodactyl panel eggs are unavailable. Configure PTERODACTYL_* on the server.'}
-              </small>
-            </label>
+            <div className="mc-select-grid">
+              <label className="mc-field">
+                <span>
+                  <Box size={13} /> SERVER SOFTWARE (EGG)
+                </span>
+                <div className="mc-select-wrap">
+                  <select value={eggId} onChange={e => setEggId(e.target.value)} disabled={!eggs.length}>
+                    {!eggs.length && <option value="">No eggs available</option>}
+                    {eggs.map(egg => (
+                      <option key={egg.id} value={egg.id}>
+                        {egg.label || egg.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={15} />
+                </div>
+              </label>
 
-            <label className="mc-field">
-              <span>
-                <Server size={13} /> CLUSTER REGION &amp; NODE
-              </span>
-              <div className="mc-select-wrap">
-                <select value={nodeId} onChange={e => setNodeId(e.target.value)} disabled={!nodes.length}>
-                  {!nodes.length && <option value="">No Pterodactyl nodes available</option>}
-                  {nodes.map(node => (
-                    <option key={node.id} value={node.id}>
-                      {node.label || node.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={15} />
-              </div>
-              <small className={nodes.length ? 'mc-field-hint' : 'mc-field-error'}>
-                {nodes.length
-                  ? 'Live datacenter node from Pterodactyl panel allocation.'
-                  : 'No live Pterodactyl nodes found. Verify PTERODACTYL_API_KEY and node setup.'}
-              </small>
-            </label>
+              <label className="mc-field">
+                <span>
+                  <Server size={13} /> CLUSTER NODE
+                </span>
+                <div className="mc-select-wrap">
+                  <select value={nodeId} onChange={e => setNodeId(e.target.value)} disabled={!nodes.length}>
+                    {!nodes.length && <option value="">No nodes available</option>}
+                    {nodes.map(node => (
+                      <option key={node.id} value={node.id}>
+                        {node.label || node.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={15} />
+                </div>
+              </label>
+            </div>
 
             {isPaid && (
               <div className="mc-billing-extras">
@@ -318,119 +425,132 @@ export default function MinecraftDeployModal({
           </div>
 
           <aside className="mc-order-summary">
-            <div className="mc-3d-scene" aria-hidden="true">
-              <div className="mc-shadow-plate" />
-              <div className="mc-voxel-block">
-                <div className="mc-face mc-face-front">
-                  <div className="mc-block-gem" />
-                  <span className="mc-block-text">{isPaid ? 'PRO MC' : 'HZL MC'}</span>
-                </div>
-                <div className="mc-face mc-face-back" />
-                <div className="mc-face mc-face-top" />
-                <div className="mc-face mc-face-bottom" />
-                <div className="mc-face mc-face-left" />
-                <div className="mc-face mc-face-right" />
+            {/* Smooth Scenic Minecraft Artwork Header (replaces 3D rotating cube) */}
+            <div className="mc-visual-banner">
+              <img
+                src={mcBackdropImg}
+                alt="Minecraft Cloud Infrastructure"
+                className="mc-visual-bg"
+                referrerPolicy="no-referrer"
+              />
+              <div className="mc-visual-scrim" />
+              <div className="mc-visual-content">
+                <span className="mc-visual-kicker">
+                  {isPaid ? 'DEDICATED PRO NODE' : 'VERIFIED HZL CLOUD'}
+                </span>
+                <h4>Craft worlds without lag.</h4>
+                <p>
+                  Smooth Paper, Purpur &amp; Fabric runtimes with isolated NVMe storage and instant panel access.
+                </p>
               </div>
             </div>
 
-            <div className="mc-summary-label">ORDER SUMMARY</div>
-            <h3>{plan.name}</h3>
-            <p className="mc-summary-desc">{plan.description}</p>
+            <div className="mc-summary-body">
+              <div className="mc-summary-label">DEPLOYMENT SUMMARY</div>
+              <h3>{plan.name}</h3>
+              <p className="mc-summary-desc">{plan.description}</p>
 
-            <div className="mc-spec-list">
-              <div className="mc-spec-item">
-                <span>Allocated Memory</span>
-                <b>{money(memoryMb)} MB RAM</b>
-              </div>
-              <div className="mc-spec-item">
-                <span>Compute vCPU</span>
-                <b>{cores} Dedicated Core{cores > 1 ? 's' : ''}</b>
-              </div>
-              <div className="mc-spec-item">
-                <span>NVMe Storage</span>
-                <b>{diskGb} GB Fast SSD</b>
-              </div>
-              <div className="mc-spec-item">
-                <span>Software</span>
-                <b>{currentEgg ? (currentEgg.name || currentEgg.label) : '—'}</b>
-              </div>
-              <div className="mc-spec-item">
-                <span>Target Node</span>
-                <b>{currentNode ? ((currentNode.name || currentNode.label)?.split('(')[0] || currentNode.name || currentNode.label) : '—'}</b>
-              </div>
-              {isPaid && promoDiscountCents > 0 && (
-                <div className="mc-spec-item" style={{ color: '#86efac' }}>
-                  <span>Promo ({appliedPromo?.code})</span>
-                  <b>-{usd(promoDiscountCents)}</b>
+              <div className="mc-spec-list">
+                <div className="mc-spec-item">
+                  <span>Allocated Memory</span>
+                  <b>{money(memoryMb)} MB RAM</b>
                 </div>
-              )}
-              {isPaid && hzlDiscountCents > 0 && (
-                <div className="mc-spec-item" style={{ color: '#fcd34d' }}>
-                  <span>HZL Discount ({money(hzlUsed)} HZL)</span>
-                  <b>-{usd(hzlDiscountCents)}</b>
+                <div className="mc-spec-item">
+                  <span>Compute vCPU</span>
+                  <b>{cores} Dedicated Core{cores > 1 ? 's' : ''}</b>
                 </div>
-              )}
-            </div>
-
-            {isPaid ? (
-              <>
-                <div className="mc-cost-total">
-                  <span>Total ({billingCycle})</span>
-                  <b>{usd(finalTotalCents)} <small style={{ fontSize: '11px', color: '#c084fc' }}>({lkr(finalTotalCents, usdToLkrRate)})</small></b>
+                <div className="mc-spec-item">
+                  <span>NVMe Storage</span>
+                  <b>{diskGb} GB SSD</b>
                 </div>
-                <div className="mc-balance-info">
-                  <span>Wallet balance:</span>
-                  <strong style={{ color: canAfford ? '#34d399' : '#f87171' }}>
-                    {usd(walletCents)}
-                  </strong>
+                <div className="mc-spec-item">
+                  <span>Software</span>
+                  <b>{currentEgg ? (currentEgg.name || currentEgg.label) : '—'}</b>
                 </div>
-              </>
-            ) : (
-              <>
-                <div className="mc-cost-total">
-                  <span>Redemption Cost</span>
-                  <b>{money(cost)} <small style={{ fontSize: '13px', color: '#c084fc' }}>HZL</small></b>
+                <div className="mc-spec-item">
+                  <span>Panel Account</span>
+                  <b className="mc-spec-email">{validPanelEmail ? effectivePanelEmail : 'Required'}</b>
                 </div>
-                <div className="mc-balance-info">
-                  <span>Your balance:</span>
-                  <strong style={{ color: canAfford ? '#34d399' : '#f87171' }}>
-                    {money(balance)} HZL
-                  </strong>
+                <div className="mc-spec-item">
+                  <span>Target Node</span>
+                  <b>{currentNode ? ((currentNode.name || currentNode.label)?.split('(')[0] || currentNode.name || currentNode.label) : '—'}</b>
                 </div>
-              </>
-            )}
-
-            {isPaid && !canAfford && typeof onOpenBilling === 'function' ? (
-              <button
-                type="button"
-                className="mc-deploy-submit"
-                onClick={() => { onClose(); onOpenBilling(); }}
-              >
-                <Wallet size={14} /> Top Up Wallet (+{usd(finalTotalCents - Number(walletCents || 0))} needed)
-              </button>
-            ) : (
-              <button
-                type="submit"
-                className="mc-deploy-submit"
-                disabled={!canSubmit}
-              >
-                {busy ? (
-                  'Provisioning Server…'
-                ) : !canAfford ? (
-                  isPaid ? 'Insufficient Wallet Balance' : 'Insufficient HZL Balance'
-                ) : !validName ? (
-                  'Enter Server Name'
-                ) : isPaid ? (
-                  <>
-                    <CreditCard size={14} /> Pay {usd(finalTotalCents)} &amp; Deploy
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={14} /> Deploy Minecraft Server
-                  </>
+                {isPaid && promoDiscountCents > 0 && (
+                  <div className="mc-spec-item" style={{ color: '#86efac' }}>
+                    <span>Promo ({appliedPromo?.code})</span>
+                    <b>-{usd(promoDiscountCents)}</b>
+                  </div>
                 )}
-              </button>
-            )}
+                {isPaid && hzlDiscountCents > 0 && (
+                  <div className="mc-spec-item" style={{ color: '#fcd34d' }}>
+                    <span>HZL Discount ({money(hzlUsed)} HZL)</span>
+                    <b>-{usd(hzlDiscountCents)}</b>
+                  </div>
+                )}
+              </div>
+
+              {isPaid ? (
+                <>
+                  <div className="mc-cost-total">
+                    <span>Total ({billingCycle})</span>
+                    <b>{usd(finalTotalCents)} <small>({lkr(finalTotalCents, usdToLkrRate)})</small></b>
+                  </div>
+                  <div className="mc-balance-info">
+                    <span>Wallet balance</span>
+                    <strong style={{ color: canAfford ? '#34d399' : '#f87171' }}>
+                      {usd(walletCents)}
+                    </strong>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mc-cost-total">
+                    <span>Redemption Cost</span>
+                    <b>{money(cost)} <small>HZL</small></b>
+                  </div>
+                  <div className="mc-balance-info">
+                    <span>Your balance</span>
+                    <strong style={{ color: canAfford ? '#34d399' : '#f87171' }}>
+                      {money(balance)} HZL
+                    </strong>
+                  </div>
+                </>
+              )}
+
+              {isPaid && !canAfford && typeof onOpenBilling === 'function' ? (
+                <button
+                  type="button"
+                  className="mc-deploy-submit"
+                  onClick={() => { onClose(); onOpenBilling(); }}
+                >
+                  <Wallet size={14} /> Top Up Wallet (+{usd(finalTotalCents - Number(walletCents || 0))} needed)
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  className="mc-deploy-submit"
+                  disabled={!canSubmit}
+                >
+                  {busy ? (
+                    'Provisioning Server…'
+                  ) : !canAfford ? (
+                    isPaid ? 'Insufficient Wallet Balance' : 'Insufficient HZL Balance'
+                  ) : !validPanelEmail ? (
+                    'Enter Registered Panel Email'
+                  ) : !validName ? (
+                    'Enter Server Name'
+                  ) : isPaid ? (
+                    <>
+                      <CreditCard size={14} /> Pay {usd(finalTotalCents)} &amp; Deploy
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={14} /> Deploy Minecraft Server
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           </aside>
         </form>
       </section>

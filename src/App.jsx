@@ -728,7 +728,8 @@ export default function App() {
             planId: plan.id,
             displayName: config.displayName,
             eggId: config.eggId,
-            nodeId: config.nodeId
+            nodeId: config.nodeId,
+            panelEmail: config.panelEmail || ''
           }
         : {
             service: plan.service,
@@ -1186,6 +1187,12 @@ export default function App() {
               <a className="side-drawer-item" href="/control" onClick={() => setNavDrawerOpen(false)}>
                 <span className="side-drawer-item-icon"><Terminal size={16} /></span>
                 <span className="side-drawer-item-text">Control Center</span>
+                <ArrowUpRight size={14} className="side-drawer-chevron" />
+              </a>
+
+              <a className="side-drawer-item" href="/control#mc-servers" onClick={() => setNavDrawerOpen(false)}>
+                <span className="side-drawer-item-icon"><Layers size={16} /></span>
+                <span className="side-drawer-item-text">MC Servers Panel</span>
                 <ArrowUpRight size={14} className="side-drawer-chevron" />
               </a>
 
@@ -2340,6 +2347,8 @@ export default function App() {
         plan={mcModalPlan}
         eggs={mcEggs}
         nodes={mcNodes}
+        me={me}
+        panelUrl={mcProvisioning?.panelUrl || 'https://spg.helzerx.cyou'}
         balance={rewards?.balance || 0}
         walletCents={walletCents}
         usdToLkrRate={usdToLkrRate}

@@ -1424,12 +1424,12 @@ app.get('/api/hosting-requests',auth,(req,res)=>{
   requests:data.hostingRequests.filter(x=>x.userId===req.session.user.id).map(({
    id,service,planId,planName,cost,status,createdAt,updatedAt,vmid,hostname,
    nodeId,osId,osLabel,displayName,provisioningStatus,error,
-   identifier,pterodactylId,serverIp,serverPort,nodeName,eggName,panelUrl,
+   identifier,pterodactylId,serverIp,serverPort,nodeName,eggName,panelUrl,panelEmail,
    billingType,billingCycle,recurringCents,paidUntil,graceUntil,autoRenew,billingStatus,suspendedReason,invoiceId
   })=>({
    id,service,planId,planName,cost,status,createdAt,updatedAt,vmid,hostname,
    nodeId,osId,osLabel,displayName,provisioningStatus,error,
-   identifier,pterodactylId,serverIp,serverPort,nodeName,eggName,panelUrl,
+   identifier,pterodactylId,serverIp,serverPort,nodeName,eggName,panelUrl,panelEmail:panelEmail||null,
    billingType:billingType||'hzl',billingCycle:billingCycle||null,recurringCents:Number(recurringCents||0),
    paidUntil:paidUntil||null,graceUntil:graceUntil||null,autoRenew:Boolean(autoRenew),
    billingStatus:billingStatus||null,suspendedReason:suspendedReason||null,invoiceId:invoiceId||null
@@ -1492,16 +1492,26 @@ app.post('/api/hosting-requests',auth,adminMutationOrigin,async(req,res)=>{
   if(!eggId||!mcNodeId){
    return res.status(400).json({error:'Select a valid Minecraft software edition (egg) and Pterodactyl node.'});
   }
+  const rawPanelEmail=String(req.body?.panelEmail||'').trim().toLowerCase();
+  const linkedEmail=String(u.email||req.session.user.email||'').trim().toLowerCase();
+  if(rawPanelEmail&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawPanelEmail)){
+   return res.status(400).json({error:'Enter a valid panel email address registered on https://spg.helzerx.cyou.'});
+  }
+  const resolvedPanelEmail=rawPanelEmail||linkedEmail;
+  if(!resolvedPanelEmail||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(resolvedPanelEmail)){
+   return res.status(400).json({error:'Register at https://spg.helzerx.cyou first and enter your registered panel email (or link your Discord/Google email).'});
+  }
 
   // Reserve HZL
   u.balance-=effectiveCost;
+  request.panelEmail=resolvedPanelEmail;
   data.hostingRequests.push(request);
-  data.auditLogs.unshift({id:crypto.randomUUID(),actorId:req.session.user.id,actorName:req.session.user.username||'user',actorRole:'user',action:'user_hzl_reserved_for_mc',targetType:'hosting_request',targetId:request.id,details:{planId:option.id,cost:effectiveCost,eggId,nodeId:mcNodeId},createdAt:now});
+  data.auditLogs.unshift({id:crypto.randomUUID(),actorId:req.session.user.id,actorName:req.session.user.username||'user',actorRole:'user',action:'user_hzl_reserved_for_mc',targetType:'hosting_request',targetId:request.id,details:{planId:option.id,cost:effectiveCost,eggId,nodeId:mcNodeId,panelEmail:resolvedPanelEmail},createdAt:now});
   if(data.auditLogs.length>5000)data.auditLogs.length=5000;
   writeData();
 
   try{
-   const created=await provisionMinecraftServer({requestId:request.id,plan:option,user:{...req.session.user,email:u.email||req.session.user.email},serverName:displayName,eggId,nodeId:mcNodeId});
+   const created=await provisionMinecraftServer({requestId:request.id,plan:option,user:{...req.session.user,email:linkedEmail},panelEmail:resolvedPanelEmail,serverName:displayName,eggId,nodeId:mcNodeId});
    request.status='provisioned';
    request.provisioningStatus='server-running';
    request.identifier=created.identifier;
@@ -1511,10 +1521,11 @@ app.post('/api/hosting-requests',auth,adminMutationOrigin,async(req,res)=>{
    request.nodeName=created.node;
    request.eggName=created.egg;
    request.panelUrl=created.panelUrl;
+   request.panelEmail=created.assignedEmail||resolvedPanelEmail;
    request.hostname=created.name;
    request.updatedAt=new Date().toISOString();
 
-   data.auditLogs.unshift({id:crypto.randomUUID(),actorId:req.session.user.id,actorName:req.session.user.username||'user',actorRole:'user',action:'user_mc_created',targetType:'hosting_request',targetId:request.id,details:{identifier:created.identifier,ip:created.ip,port:created.port,cost:effectiveCost},createdAt:request.updatedAt});
+   data.auditLogs.unshift({id:crypto.randomUUID(),actorId:req.session.user.id,actorName:req.session.user.username||'user',actorRole:'user',action:'user_mc_created',targetType:'hosting_request',targetId:request.id,details:{identifier:created.identifier,ip:created.ip,port:created.port,cost:effectiveCost,panelEmail:request.panelEmail},createdAt:request.updatedAt});
    if(data.auditLogs.length>5000)data.auditLogs.length=5000;
    writeData();
 
@@ -1522,9 +1533,9 @@ app.post('/api/hosting-requests',auth,adminMutationOrigin,async(req,res)=>{
     ok:true,
     request:{
      id:request.id,service:'minecraft',planName:request.planName,cost:request.cost,status:request.status,
-     identifier:created.identifier,hostname:created.name,serverIp:created.ip,serverPort:created.port,panelUrl:created.panelUrl
+     identifier:created.identifier,hostname:created.name,serverIp:created.ip,serverPort:created.port,panelUrl:created.panelUrl,panelEmail:request.panelEmail
     },
-    message:`Your Minecraft server "${created.name}" is online at ${created.ip}:${created.port}! ${effectiveCost} HZL has been deducted from your balance.`
+    message:`Your Minecraft server "${created.name}" is online at ${created.ip}:${created.port} and assigned to ${request.panelEmail}! ${effectiveCost} HZL deducted.`
    });
   }catch(error){
    request.updatedAt=new Date().toISOString();
@@ -1889,6 +1900,7 @@ app.post('/api/billing/checkout',auth,adminMutationOrigin,async(req,res)=>{
   const selectedNode=nodes.find(x=>x.id===nodeId);
   let selectedOs=osOptions.find(x=>x.id===osId);
 
+  let resolvedMcPanelEmail='';
   if(service==='lxc'){
     if(!/^[a-z0-9](?:[a-z0-9-]{0,28}[a-z0-9])?$/.test(displayName)||displayName.length<2)return res.status(400).json({error:'VPS name must be 2–30 lowercase letters, numbers or hyphens.'});
     if(!selectedNode)return res.status(400).json({error:'Selected Proxmox node is not in the server allowlist.'});
@@ -1908,6 +1920,15 @@ app.post('/api/billing/checkout',auth,adminMutationOrigin,async(req,res)=>{
     if(!ptero.ready)return res.status(503).json({error:'Automatic Pterodactyl provisioning is not ready yet.',missing:ptero.missing});
     if(!String(req.body?.eggId||'').trim()||!String(req.body?.nodeId||'').trim()){
       return res.status(400).json({error:'Select a valid Minecraft software edition (egg) and Pterodactyl node.'});
+    }
+    const rawPanelEmail=String(req.body?.panelEmail||'').trim().toLowerCase();
+    const linkedEmail=String(u.email||req.session.user.email||'').trim().toLowerCase();
+    if(rawPanelEmail&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawPanelEmail)){
+      return res.status(400).json({error:'Enter a valid panel email address registered on https://spg.helzerx.cyou.'});
+    }
+    resolvedMcPanelEmail=rawPanelEmail||linkedEmail;
+    if(!resolvedMcPanelEmail||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(resolvedMcPanelEmail)){
+      return res.status(400).json({error:'Register at https://spg.helzerx.cyou first and enter your registered panel email (or link your Discord/Google email).'});
     }
   } else {
     return res.status(400).json({error:'Unsupported service type for paid checkout.'});
@@ -1981,29 +2002,31 @@ app.post('/api/billing/checkout',auth,adminMutationOrigin,async(req,res)=>{
     billingType:'paid',billingCycle,recurringCents:subtotalCents,paidUntil,graceUntil,autoRenew,
     billingStatus:'active',invoiceId:invoice.id,
     ...(service==='lxc'?{nodeId,osId,osLabel:selectedOs.label}:{}),
+    ...(service==='minecraft'&&resolvedMcPanelEmail?{panelEmail:resolvedMcPanelEmail}:{}),
     planSnapshot:{id:option.id,service:option.service,name:option.name,cost:option.cost,paidPricing:option.paidPricing,...(option.proxmox?{proxmox:{...option.proxmox}}:{}),...(option.pterodactyl?{pterodactyl:{...option.pterodactyl}}:{})},
     status:'provisioning',provisioningAttempts:1,createdAt:now,updatedAt:now
   };
   data.hostingRequests.push(request);
-  data.auditLogs.unshift({id:crypto.randomUUID(),actorId:userId,actorName:req.session.user.username||'user',actorRole:'user',action:'user_paid_checkout_started',targetType:'hosting_request',targetId:request.id,details:{planId:option.id,billingCycle,totalCents,hzlUsed,promoCode:appliedPromo?.code||null,invoiceId:invoice.id},createdAt:now});
+  data.auditLogs.unshift({id:crypto.randomUUID(),actorId:userId,actorName:req.session.user.username||'user',actorRole:'user',action:'user_paid_checkout_started',targetType:'hosting_request',targetId:request.id,details:{planId:option.id,billingCycle,totalCents,hzlUsed,promoCode:appliedPromo?.code||null,invoiceId:invoice.id,panelEmail:resolvedMcPanelEmail||null},createdAt:now});
   writeData();
 
   if(service==='minecraft'){
     const eggId=String(req.body?.eggId||'').trim();
     const mcNodeId=String(req.body?.nodeId||'').trim();
+    const linkedEmail=String(u.email||req.session.user.email||'').trim().toLowerCase();
     try{
-      const created=await provisionMinecraftServer({requestId:request.id,plan:option,user:{...req.session.user,email:u.email||req.session.user.email},serverName:displayName,eggId,nodeId:mcNodeId});
+      const created=await provisionMinecraftServer({requestId:request.id,plan:option,user:{...req.session.user,email:linkedEmail},panelEmail:resolvedMcPanelEmail,serverName:displayName,eggId,nodeId:mcNodeId});
       request.status='provisioned';request.provisioningStatus='server-running';
       request.identifier=created.identifier;request.pterodactylId=created.id;
       request.serverIp=created.ip;request.serverPort=created.port;
       request.nodeName=created.node;request.eggName=created.egg;
-      request.panelUrl=created.panelUrl;request.hostname=created.name;
+      request.panelUrl=created.panelUrl;request.panelEmail=created.assignedEmail||resolvedMcPanelEmail;request.hostname=created.name;
       request.updatedAt=new Date().toISOString();
       writeData();
       return res.status(201).json({
         ok:true,invoice,
-        request:{id:request.id,service:'minecraft',planName:request.planName,status:request.status,identifier:created.identifier,hostname:created.name,serverIp:created.ip,serverPort:created.port,panelUrl:created.panelUrl,billingType:'paid',billingCycle,paidUntil,autoRenew},
-        message:`Paid Minecraft server "${created.name}" deployed! Invoice ${invoice.invoiceNumber} ($${(totalCents/100).toFixed(2)}) settled.`
+        request:{id:request.id,service:'minecraft',planName:request.planName,status:request.status,identifier:created.identifier,hostname:created.name,serverIp:created.ip,serverPort:created.port,panelUrl:created.panelUrl,panelEmail:request.panelEmail,billingType:'paid',billingCycle,paidUntil,autoRenew},
+        message:`Paid Minecraft server "${created.name}" deployed to ${request.panelEmail}! Invoice ${invoice.invoiceNumber} ($${(totalCents/100).toFixed(2)}) settled.`
       });
     }catch(error){
       request.updatedAt=new Date().toISOString();request.status='failed';request.provisioningStatus='failed-before-resource-allocation';

@@ -588,21 +588,267 @@ textarea:focus-visible {
   border-color: rgba(239, 68, 68, 0.5);
 }
 
-/* Summary KPI Grid (Single-level elevation) */
+/* Summary KPI Grid (Tactile 3D elevation) */
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
 }
 
-.kpi-card {
-  background: var(--surface);
+.kpi-card, .service-card, .instance-card, .panel, .metric-block {
+  position: relative;
+  background: linear-gradient(165deg, rgba(22, 22, 30, 0.94), rgba(14, 14, 20, 0.98));
   border: 1px solid var(--border);
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: transform 220ms var(--ease), border-color 220ms var(--ease), box-shadow 220ms var(--ease);
+}
+
+.surface-3d {
+  transform-style: preserve-3d;
+}
+
+.surface-3d::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(360px circle at var(--mx, 50%) var(--my, 50%), rgba(245, 176, 65, 0.09), transparent 55%);
+  transition: opacity 220ms ease;
+}
+
+.surface-3d.mc-accent::after {
+  background: radial-gradient(380px circle at var(--mx, 50%) var(--my, 50%), rgba(167, 139, 250, 0.14), transparent 55%);
+}
+
+.surface-3d:hover {
+  transform: perspective(1000px) translateY(-3px) translateZ(6px);
+  border-color: var(--border-strong);
+  box-shadow:
+    0 22px 44px rgba(0, 0, 0, 0.56),
+    inset 0 1px 0 rgba(255, 255, 255, 0.13);
+}
+
+.surface-3d:hover::after {
+  opacity: 1;
+}
+
+.kpi-card {
   border-radius: var(--radius-md);
   padding: 18px 20px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* Available & Active Services Grid on Home Overview */
+.services-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.service-card {
+  border-radius: var(--radius-lg);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: hidden;
+  min-height: 196px;
+}
+
+.service-card.mc-service-card {
+  border-color: rgba(167, 139, 250, 0.25);
+}
+
+.service-card-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 45%;
+  opacity: 0.34;
+  transition: transform 550ms var(--ease), opacity 300ms ease;
+  pointer-events: none;
+}
+
+.service-card:hover .service-card-bg {
+  transform: scale(1.04);
+  opacity: 0.44;
+}
+
+.service-card-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(125deg, rgba(11, 11, 16, 0.94) 12%, rgba(13, 13, 22, 0.78) 65%, rgba(16, 14, 28, 0.7) 100%);
+  pointer-events: none;
+}
+
+.service-card-inner {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+}
+
+.service-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.service-card-kicker {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.mc-service-card .service-card-kicker {
+  color: var(--accent-mc);
+}
+
+.service-card-head h3 {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+.service-card-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  max-width: 460px;
+}
+
+.service-metrics-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12.5px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.service-metrics-row strong {
+  color: #fff;
+  font-weight: 700;
+}
+
+.service-card-actions {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* MC Dedicated Tab Scenic Hero */
+.mc-hero-banner {
+  position: relative;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(167, 139, 250, 0.28);
+  background: linear-gradient(135deg, #161426 0%, #0d0e17 100%);
+  box-shadow:
+    0 22px 48px rgba(0, 0, 0, 0.52),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  padding: 28px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(260px, 0.85fr);
+  gap: 24px;
+  align-items: center;
+}
+
+.mc-hero-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 45%;
+  opacity: 0.48;
+  pointer-events: none;
+}
+
+.mc-hero-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, rgba(10, 10, 16, 0.95) 20%, rgba(12, 12, 22, 0.78) 65%, rgba(14, 13, 24, 0.65) 100%);
+  pointer-events: none;
+}
+
+.mc-hero-content, .mc-hero-steps {
+  position: relative;
+  z-index: 2;
+}
+
+.mc-hero-content h2 {
+  font-size: clamp(22px, 3vw, 28px);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: #fff;
+  line-height: 1.15;
+  margin-bottom: 8px;
+}
+
+.mc-hero-content h2 span {
+  color: var(--accent-mc);
+}
+
+.mc-hero-content p {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  max-width: 520px;
+}
+
+.mc-hero-steps {
+  background: rgba(11, 12, 19, 0.84);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(167, 139, 250, 0.24);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.mc-hero-steps h4 {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.mc-hero-steps ol {
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.mc-hero-steps a {
+  color: var(--accent-mc);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .kpi-label {
@@ -676,18 +922,11 @@ textarea:focus-visible {
 }
 
 .instance-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  transition: border-color 160ms var(--ease);
-}
-
-.instance-card:hover {
-  border-color: var(--border-strong);
 }
 
 .instance-head {
@@ -1305,7 +1544,7 @@ textarea:focus-visible {
   .kpi-grid, .telemetry-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .tickets-layout {
+  .tickets-layout, .services-grid, .mc-hero-banner, .mc-deploy-split {
     grid-template-columns: 1fr;
   }
 }
@@ -1328,6 +1567,7 @@ textarea:focus-visible {
   }
   .sidebar.open {
     transform: translateX(0);
+    box-shadow: 24px 0 60px rgba(0, 0, 0, 0.72);
   }
   .main-content {
     padding: 20px 16px 40px;
@@ -1420,6 +1660,13 @@ textarea:focus-visible {
             </span>
             <span class="nav-count" id="navInstanceCount">0</span>
           </button>
+          <button type="button" class="nav-item" data-view="mc-servers">
+            <span class="nav-item-left">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+              <span>MC Servers</span>
+            </span>
+            <span class="nav-count" id="navMcCount">0</span>
+          </button>
           <button type="button" class="nav-item" data-view="telemetry">
             <span class="nav-item-left">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -1499,28 +1746,85 @@ textarea:focus-visible {
             </div>
           </div>
 
-          <!-- Real KPI Strip (computed strictly from actual user instances & balances) -->
+          <!-- Real KPI Strip -->
           <div class="kpi-grid">
-            <div class="kpi-card">
+            <div class="kpi-card surface-3d">
               <span class="kpi-label">Active Instances</span>
               <strong class="kpi-value" id="kpiTotalInstances">0</strong>
               <span class="kpi-sub" id="kpiRunningBreakdown">0 running · 0 stopped</span>
             </div>
-            <div class="kpi-card">
+            <div class="kpi-card surface-3d">
               <span class="kpi-label">Allocated Compute</span>
               <strong class="kpi-value" id="kpiAllocatedCompute">0 vCPU</strong>
               <span class="kpi-sub" id="kpiAllocatedMem">0 MB RAM · 0 GB Disk</span>
             </div>
-            <div class="kpi-card">
+            <div class="kpi-card surface-3d">
               <span class="kpi-label">Available Wallet</span>
               <strong class="kpi-value" id="kpiWalletUsd">$0.00</strong>
               <span class="kpi-sub" id="kpiWalletHzl">0 HZL balance</span>
             </div>
-            <div class="kpi-card">
+            <div class="kpi-card surface-3d">
               <span class="kpi-label">Open Support Tickets</span>
               <strong class="kpi-value" id="kpiOpenTickets">0</strong>
               <span class="kpi-sub" id="kpi2faStatus">2FA status loading</span>
             </div>
+          </div>
+
+          <!-- Active & Available Services Overview -->
+          <div class="toolbar-row">
+            <h2 style="font-size:15px;font-weight:700;color:#fff">Your Available &amp; Active Services</h2>
+          </div>
+          <div class="services-grid">
+            <article class="service-card surface-3d">
+              <div class="service-card-inner">
+                <div class="service-card-head">
+                  <div>
+                    <span class="service-card-kicker">PROXMOX VE · LXC CONTAINERS</span>
+                    <h3>Cloud VPS Hosting</h3>
+                  </div>
+                  <span class="engine-state standby" id="homeLxcEngineStatus">Checking…</span>
+                </div>
+                <p class="service-card-desc">
+                  Isolated Linux containers with live shell console, power control, and snapshot restore points.
+                </p>
+                <div class="service-metrics-row">
+                  <span>Deployed: <strong id="homeLxcCount">0</strong></span>
+                  <span>Online: <strong id="homeLxcOnline">0</strong></span>
+                  <span>Plans Ready: <strong id="homeLxcPlans">0</strong></span>
+                </div>
+                <div class="service-card-actions">
+                  <button type="button" class="btn primary sm" data-jump-view="instances" id="homeViewVpsBtn">View VPS Fleet</button>
+                  <a href="/#deploy" class="btn sm">Deploy VPS</a>
+                </div>
+              </div>
+            </article>
+
+            <article class="service-card surface-3d mc-accent mc-service-card">
+              <img src="/images/minecraft-deploy-bg.jpg" alt="Minecraft Infrastructure" class="service-card-bg" referrerpolicy="no-referrer">
+              <div class="service-card-scrim"></div>
+              <div class="service-card-inner">
+                <div class="service-card-head">
+                  <div>
+                    <span class="service-card-kicker">PTERODACTYL · SPG.HELZERX.CYOU</span>
+                    <h3>Minecraft Servers</h3>
+                  </div>
+                  <span class="engine-state standby" id="homeMcEngineStatus">Checking…</span>
+                </div>
+                <p class="service-card-desc">
+                  High-tick Paper, Purpur &amp; Fabric servers assigned directly to your SPG panel account or linked Discord/Google email.
+                </p>
+                <div class="service-metrics-row">
+                  <span>Deployed: <strong id="homeMcCount">0</strong></span>
+                  <span>Online: <strong id="homeMcOnline">0</strong></span>
+                  <span>Plans Ready: <strong id="homeMcPlans">0</strong></span>
+                </div>
+                <div class="service-card-actions">
+                  <button type="button" class="btn primary sm" data-jump-view="mc-servers">MC Servers</button>
+                  <button type="button" class="btn sm" id="homeDeployMcBtn">Deploy MC</button>
+                  <a href="https://spg.helzerx.cyou" target="_blank" rel="noopener noreferrer" class="btn sm" id="homeSpgPanelLink">Open SPG Panel</a>
+                </div>
+              </div>
+            </article>
           </div>
 
           <div class="toolbar-row">
@@ -1560,6 +1864,54 @@ textarea:focus-visible {
           </div>
 
           <div class="fleet-grid" id="fullFleetGrid">
+            <div class="skeleton-row"></div>
+            <div class="skeleton-row"></div>
+          </div>
+        </section>
+
+        <!-- VIEW 2B: DEDICATED MC SERVERS -->
+        <section class="view-section" id="view-mc-servers">
+          <div class="page-head">
+            <div>
+              <h1>Minecraft Servers</h1>
+              <p>Manage dedicated Pterodactyl servers and deploy new worlds assigned directly to your SPG panel account.</p>
+            </div>
+            <div class="head-actions">
+              <a href="https://spg.helzerx.cyou" target="_blank" rel="noopener noreferrer" class="btn sm" id="mcTabPanelLink">Open SPG Panel</a>
+              <button type="button" class="btn primary sm" id="openMcDeployTabBtn">Deploy Minecraft Server</button>
+            </div>
+          </div>
+
+          <div class="mc-hero-banner surface-3d mc-accent">
+            <img src="/images/minecraft-deploy-bg.jpg" alt="Minecraft Server World" class="mc-hero-bg" referrerpolicy="no-referrer">
+            <div class="mc-hero-scrim"></div>
+            <div class="mc-hero-content">
+              <span class="service-card-kicker" style="color:var(--accent-mc)">PTERODACTYL ORCHESTRATION</span>
+              <h2>Dedicated worlds, <span>built to scale smoothly.</span></h2>
+              <p>
+                Provision Java or Bedrock containers backed by isolated NVMe storage, automated allocations, and live console dispatch right here or in the SPG Game Panel.
+              </p>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+                <button type="button" class="btn primary sm" id="mcHeroDeployBtn">Deploy Minecraft Server</button>
+                <a href="https://spg.helzerx.cyou" target="_blank" rel="noopener noreferrer" class="btn sm" id="mcHeroPanelLink">Register / Login at spg.helzerx.cyou</a>
+              </div>
+            </div>
+            <div class="mc-hero-steps">
+              <h4>Before Creating a Minecraft Server</h4>
+              <ol>
+                <li>Register an account at <a href="https://spg.helzerx.cyou" target="_blank" rel="noopener noreferrer">https://spg.helzerx.cyou</a> and enter that registered email when deploying.</li>
+                <li>Your new Minecraft server is automatically assigned to that panel account email.</li>
+                <li><strong>Linked Discord or Google?</strong> If you log into SPG Panel with the same Discord or Google account linked here, you can deploy immediately with auto-match.</li>
+              </ol>
+            </div>
+          </div>
+
+          <div class="toolbar-row">
+            <h2 style="font-size:15px;font-weight:700;color:#fff">Your Minecraft Fleet</h2>
+            <span class="mono" style="font-size:12px;color:var(--text-muted)" id="mcTabCountLabel">0 servers</span>
+          </div>
+
+          <div class="fleet-grid" id="mcServersGrid">
             <div class="skeleton-row"></div>
             <div class="skeleton-row"></div>
           </div>
@@ -1898,48 +2250,93 @@ textarea:focus-visible {
   </div>
 </div>
 
-<!-- Deploy Minecraft Modal -->
+<!-- Deploy Minecraft Modal (Redesigned with Smooth Backdrop & Panel Linking Steps) -->
 <div class="modal-backdrop" id="mcDeployModal" role="dialog" aria-modal="true" aria-labelledby="mcDeployTitle">
-  <div class="modal-dialog compact" style="width:min(560px,100%)">
+  <div class="modal-dialog" style="width:min(960px,100%)">
     <div class="modal-header">
       <div>
         <h3 id="mcDeployTitle">Deploy Minecraft Server</h3>
-        <p>Provision on Pterodactyl using earned HZL balance.</p>
+        <p>Provision on Pterodactyl SPG Panel with dedicated NVMe storage and HZL rewards.</p>
       </div>
       <button type="button" class="modal-close" data-close-modal="mcDeployModal" aria-label="Close dialog">✕</button>
     </div>
     <form id="mcDeployForm">
-      <div class="modal-body">
-        <div>
-          <label class="field-label" for="mcDeployName">Server Display Name</label>
-          <input type="text" class="input" id="mcDeployName" placeholder="helzer-smp" maxlength="26" required>
-        </div>
-        <div>
-          <label class="field-label" for="mcDeployPlan">Plan Tier</label>
-          <select class="select" id="mcDeployPlan"></select>
-        </div>
-        <div>
-          <label class="field-label" for="mcDeployEgg">Server Software</label>
-          <select class="select" id="mcDeployEgg"></select>
-        </div>
-        <div>
-          <label class="field-label" for="mcDeployNode">Node</label>
-          <select class="select" id="mcDeployNode"></select>
-        </div>
-        <div class="spec-line" style="grid-template-columns:repeat(2,minmax(0,1fr));border-bottom:none;padding-bottom:0">
-          <div class="spec-cell">
-            <small>Plan Cost</small>
-            <strong id="mcDeployCost">—</strong>
+      <div class="modal-body" style="padding:22px">
+        <div class="mc-deploy-split" style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(280px,0.85fr);gap:22px;align-items:start">
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="padding:14px 16px;border-radius:12px;border:1px solid rgba(167,139,250,0.28);background:rgba(16,16,25,0.92)">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+                <strong style="font-size:13px;color:#fff">Panel Account Setup Required</strong>
+                <a href="https://spg.helzerx.cyou" target="_blank" rel="noopener noreferrer" id="mcModalSpgLink" style="font-size:11.5px;font-weight:600;color:var(--accent-mc);text-decoration:underline">Open spg.helzerx.cyou ↗</a>
+              </div>
+              <ol style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-secondary);line-height:1.45">
+                <li>First create an account at <a href="https://spg.helzerx.cyou" target="_blank" rel="noopener noreferrer" style="color:var(--accent-mc);font-weight:600">https://spg.helzerx.cyou</a>.</li>
+                <li>Enter that registered panel email below so your server assigns directly to it.</li>
+                <li><strong style="color:var(--green)">Linked Discord or Google?</strong> If you log into the panel with the same Discord or Google email linked here, no separate setup is required — keep auto-match checked.</li>
+              </ol>
+              <label id="mcAutoMatchRow" style="display:none;align-items:center;gap:9px;margin-top:10px;padding:9px 11px;border-radius:9px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);cursor:pointer;font-size:12px">
+                <input type="checkbox" id="mcDeployAutoMatch" style="accent-color:var(--green)">
+                <div>
+                  <strong style="display:block;color:#dcfce7">Auto-assign to linked account</strong>
+                  <small id="mcAutoMatchHint" style="color:var(--text-muted)"></small>
+                </div>
+              </label>
+              <div style="margin-top:10px">
+                <label class="field-label" for="mcDeployEmail" style="margin-bottom:4px">Registered Panel Email (spg.helzerx.cyou)</label>
+                <input type="email" class="input" id="mcDeployEmail" placeholder="player@gmail.com" required>
+              </div>
+            </div>
+
+            <div>
+              <label class="field-label" for="mcDeployName">Server Display Name</label>
+              <input type="text" class="input" id="mcDeployName" placeholder="helzer-smp" maxlength="26" required>
+            </div>
+            <div>
+              <label class="field-label" for="mcDeployPlan">Plan Tier</label>
+              <select class="select" id="mcDeployPlan"></select>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div>
+                <label class="field-label" for="mcDeployEgg">Server Software</label>
+                <select class="select" id="mcDeployEgg"></select>
+              </div>
+              <div>
+                <label class="field-label" for="mcDeployNode">Node</label>
+                <select class="select" id="mcDeployNode"></select>
+              </div>
+            </div>
           </div>
-          <div class="spec-cell">
-            <small>Your HZL Balance</small>
-            <strong id="mcDeployBalance">0 HZL</strong>
-          </div>
+
+          <aside style="border-radius:14px;border:1px solid rgba(167,139,250,0.25);background:linear-gradient(155deg,#171825,#0c0d14);overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,0.45)">
+            <div style="position:relative;min-height:165px;display:flex;align-items:flex-end;padding:18px;overflow:hidden;border-bottom:1px solid var(--border)">
+              <img src="/images/minecraft-deploy-bg.jpg" alt="Minecraft Server World" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 45%;pointer-events:none" referrerpolicy="no-referrer">
+              <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(9,10,16,0.22) 0%,rgba(11,12,20,0.96) 95%);pointer-events:none"></div>
+              <div style="position:relative;z-index:2">
+                <span style="display:block;font-size:10px;font-weight:700;letter-spacing:0.13em;color:var(--green);margin-bottom:4px">PTERODACTYL CLOUD</span>
+                <h4 style="font-size:18px;font-weight:800;color:#fff;margin-bottom:4px">Craft worlds without lag.</h4>
+                <p style="font-size:12px;color:var(--text-secondary);line-height:1.45">Smooth Paper, Purpur &amp; Fabric runtimes backed by fast NVMe storage.</p>
+              </div>
+            </div>
+            <div style="padding:16px 18px;display:flex;flex-direction:column;gap:12px">
+              <div class="spec-line" style="grid-template-columns:repeat(2,minmax(0,1fr));border-top:none;padding-top:0">
+                <div class="spec-cell">
+                  <small>Plan Cost</small>
+                  <strong id="mcDeployCost" style="color:var(--accent-mc)">—</strong>
+                </div>
+                <div class="spec-cell">
+                  <small>Your HZL Balance</small>
+                  <strong id="mcDeployBalance">0 HZL</strong>
+                </div>
+              </div>
+              <div class="spec-cell">
+                <small>Panel Account Assignment</small>
+                <strong id="mcDeployEmailPreview" style="color:var(--green);font-size:12.5px">Enter email</strong>
+              </div>
+              <button type="submit" class="btn primary" id="mcDeploySubmit" style="width:100%">Deploy Server</button>
+              <button type="button" class="btn" data-close-modal="mcDeployModal" style="width:100%">Cancel</button>
+            </div>
+          </aside>
         </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn" data-close-modal="mcDeployModal">Cancel</button>
-        <button type="submit" class="btn primary" id="mcDeploySubmit">Deploy Server</button>
       </div>
     </form>
   </div>
@@ -2024,6 +2421,7 @@ const state = {
 const VIEW_LABELS = {
   overview: 'Overview',
   instances: 'My Instances',
+  'mc-servers': 'MC Servers',
   telemetry: 'Live Telemetry',
   terminal: 'Shell & Console',
   snapshots: 'Snapshots',
@@ -2154,6 +2552,9 @@ function switchView(view) {
   });
   $('breadcrumbTitle').textContent = VIEW_LABELS[view];
   $('sidebarNav').classList.remove('open');
+  if (location.hash !== '#' + view) {
+    history.replaceState(null, '', '#' + view);
+  }
 }
 
 function renderAccountHeader() {
@@ -2183,6 +2584,7 @@ function renderAccountHeader() {
 function renderEngineStatus() {
   const prox = Boolean(state.optionsData?.provisioning?.ready);
   const ptero = Boolean(state.optionsData?.pterodactyl?.ready);
+  const panelUrl = String(state.optionsData?.pterodactyl?.panelUrl || 'https://spg.helzerx.cyou').replace(/\/+$/, '');
 
   const pEl = $('engineProxmoxState');
   pEl.textContent = prox ? 'Ready' : 'Standby';
@@ -2191,6 +2593,21 @@ function renderEngineStatus() {
   const mEl = $('enginePteroState');
   mEl.textContent = ptero ? 'Ready' : 'Standby';
   mEl.className = 'engine-state ' + (ptero ? 'ok' : 'standby');
+
+  const hlEl = $('homeLxcEngineStatus');
+  if (hlEl) {
+    hlEl.textContent = prox ? 'Engine Ready' : 'Standby';
+    hlEl.className = 'engine-state ' + (prox ? 'ok' : 'standby');
+  }
+  const hmEl = $('homeMcEngineStatus');
+  if (hmEl) {
+    hmEl.textContent = ptero ? 'Engine Ready' : 'Standby';
+    hmEl.className = 'engine-state ' + (ptero ? 'ok' : 'standby');
+  }
+  ['homeSpgPanelLink', 'mcTabPanelLink', 'mcHeroPanelLink', 'mcModalSpgLink'].forEach(linkId => {
+    const a = $(linkId);
+    if (a) a.href = panelUrl;
+  });
 }
 
 function renderKpis() {
@@ -2210,6 +2627,19 @@ function renderKpis() {
   }
 
   $('navInstanceCount').textContent = list.length;
+  const lxcList = list.filter(x => x.service === 'lxc');
+  const mcList = list.filter(x => x.service === 'minecraft');
+  const lxcOnline = lxcList.filter(x => ['provisioned', 'running'].includes(String(x.status).toLowerCase())).length;
+  const mcOnline = mcList.filter(x => ['provisioned', 'running'].includes(String(x.status).toLowerCase())).length;
+  const plans = Array.isArray(state.optionsData?.options) ? state.optionsData.options : [];
+  $('navMcCount').textContent = mcList.length;
+  if ($('homeLxcCount')) $('homeLxcCount').textContent = money(lxcList.length);
+  if ($('homeLxcOnline')) $('homeLxcOnline').textContent = money(lxcOnline);
+  if ($('homeLxcPlans')) $('homeLxcPlans').textContent = money(plans.filter(p => p.service === 'lxc').length);
+  if ($('homeMcCount')) $('homeMcCount').textContent = money(mcList.length);
+  if ($('homeMcOnline')) $('homeMcOnline').textContent = money(mcOnline);
+  if ($('homeMcPlans')) $('homeMcPlans').textContent = money(plans.filter(p => p.service === 'minecraft').length);
+
   $('kpiTotalInstances').textContent = money(list.length);
   $('kpiRunningBreakdown').textContent = `${runningCount} running · ${stoppedCount} stopped`;
   $('kpiAllocatedCompute').textContent = `${money(totalCores)} vCPU`;
@@ -2247,7 +2677,7 @@ function buildInstanceCard(inst) {
   const address = isMc && inst.serverIp ? `${inst.serverIp}:${inst.serverPort || 25565}` : null;
 
   return `
-    <article class="instance-card">
+    <article class="instance-card surface-3d ${isMc ? 'mc-accent' : ''}">
       <div class="instance-head">
         <div class="instance-title">
           <h3>${esc(title)}</h3>
@@ -2260,6 +2690,13 @@ function buildInstanceCard(inst) {
         <div class="address-row">
           <span>${esc(address)}</span>
           <button type="button" class="btn sm" data-copy-addr="${esc(address)}">Copy</button>
+        </div>
+      ` : ''}
+
+      ${isMc && inst.panelEmail ? `
+        <div style="font-size:11.5px;color:var(--text-muted);display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <span>Panel Account</span>
+          <span class="mono" style="color:var(--green);overflow:hidden;text-overflow:ellipsis">${esc(inst.panelEmail)}</span>
         </div>
       ` : ''}
 
@@ -2397,6 +2834,26 @@ function renderFleet() {
 
   fullGrid.innerHTML = filtered.map(buildInstanceCard).join('');
   bindCardEvents(fullGrid);
+
+  // Dedicated MC Servers view rendering
+  const mcOnly = state.instances.filter(x => x.service === 'minecraft');
+  const mcGrid = $('mcServersGrid');
+  if ($('mcTabCountLabel')) $('mcTabCountLabel').textContent = `${mcOnly.length} server${mcOnly.length === 1 ? '' : 's'}`;
+  if (mcGrid) {
+    if (!mcOnly.length) {
+      mcGrid.innerHTML = `
+        <div class="state-panel">
+          <h3>No Minecraft servers deployed yet</h3>
+          <p>First register at https://spg.helzerx.cyou (or use your linked Discord/Google email), then launch your first server here.</p>
+          <button type="button" class="btn primary sm" id="emptyMcTabDeployBtn">Deploy Minecraft Server</button>
+        </div>
+      `;
+      $('emptyMcTabDeployBtn')?.addEventListener('click', openMcDeployModal);
+    } else {
+      mcGrid.innerHTML = mcOnly.map(buildInstanceCard).join('');
+      bindCardEvents(mcGrid);
+    }
+  }
 }
 
 function populateInstanceSelectors() {
@@ -2819,6 +3276,46 @@ function openMcDeployModal() {
   const nodes = Array.isArray(state.optionsData?.mcNodes) ? state.optionsData.mcNodes : [];
   const ready = Boolean(state.optionsData?.pterodactyl?.ready);
 
+  const u = state.user || {};
+  const linkedEmail = String(u.email || '').trim().toLowerCase();
+  const providers = Array.isArray(u.authProviders) ? u.authProviders : [];
+  const hasSocial = Boolean(u.discordLinked || providers.some(p => p === 'discord' || p === 'google'));
+  const canAuto = Boolean(linkedEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(linkedEmail) && hasSocial);
+
+  const emailEl = $('mcDeployEmail');
+  const autoRow = $('mcAutoMatchRow');
+  const autoChk = $('mcDeployAutoMatch');
+  const previewEl = $('mcDeployEmailPreview');
+
+  const syncEmailPreview = () => {
+    const val = emailEl.value.trim().toLowerCase();
+    previewEl.textContent = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val) ? val : 'Required';
+  };
+
+  if (canAuto) {
+    autoRow.style.display = 'flex';
+    autoChk.checked = true;
+    $('mcAutoMatchHint').textContent = `${linkedEmail} · Uses your linked ${u.discordLinked ? 'Discord' : 'Google'} email automatically`;
+    emailEl.value = linkedEmail;
+    emailEl.readOnly = true;
+    autoChk.onchange = () => {
+      if (autoChk.checked) {
+        emailEl.value = linkedEmail;
+        emailEl.readOnly = true;
+      } else {
+        emailEl.readOnly = false;
+        emailEl.focus();
+      }
+      syncEmailPreview();
+    };
+  } else {
+    autoRow.style.display = 'none';
+    emailEl.readOnly = false;
+    emailEl.value = linkedEmail;
+  }
+  emailEl.oninput = syncEmailPreview;
+  syncEmailPreview();
+
   $('mcDeployBalance').textContent = `${money(state.rewards?.balance || 0)} HZL`;
   $('mcDeployPlan').innerHTML = plans.length
     ? plans.map(p => `<option value="${esc(p.id)}" data-cost="${esc(p.cost)}">${esc(p.name)} (${esc(p.pterodactyl?.memory || '—')} MB · ${money(p.cost)} HZL)</option>`).join('')
@@ -3148,15 +3645,30 @@ $('mcModalTermForm').addEventListener('submit', async e => {
   }
 });
 
-// Deploy Minecraft Form
+// Deploy Minecraft Form & Subtle 3D Card Lighting
 $('openMcDeployOverviewBtn').addEventListener('click', openMcDeployModal);
+$('homeDeployMcBtn')?.addEventListener('click', openMcDeployModal);
 $('openMcDeployFleetBtn').addEventListener('click', openMcDeployModal);
+$('openMcDeployTabBtn')?.addEventListener('click', openMcDeployModal);
+$('mcHeroDeployBtn')?.addEventListener('click', openMcDeployModal);
+
+document.querySelector('.main-content')?.addEventListener('pointermove', e => {
+  const card = e.target.closest('.surface-3d');
+  if (!card) return;
+  const r = card.getBoundingClientRect();
+  card.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+  card.style.setProperty('--my', (e.clientY - r.top) + 'px');
+});
 
 $('mcDeployForm').addEventListener('submit', async e => {
   e.preventDefault();
   const displayName = $('mcDeployName').value.trim().toLowerCase();
   if (!/^[a-z0-9](?:[a-z0-9-]{0,24}[a-z0-9])?$/.test(displayName)) {
     return showToast('Name must be 2–26 lowercase letters, numbers, or hyphens.', true);
+  }
+  const panelEmail = $('mcDeployEmail').value.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(panelEmail)) {
+    return showToast('Register at https://spg.helzerx.cyou and enter a valid panel email.', true);
   }
   const btn = $('mcDeploySubmit');
   btn.disabled = true;
@@ -3169,14 +3681,15 @@ $('mcDeployForm').addEventListener('submit', async e => {
         planId: $('mcDeployPlan').value,
         displayName,
         eggId: $('mcDeployEgg').value,
-        nodeId: $('mcDeployNode').value
+        nodeId: $('mcDeployNode').value,
+        panelEmail
       })
     });
     $('mcDeployModal').classList.remove('open');
     $('mcDeployName').value = '';
-    showToast('Minecraft server deployed.');
+    showToast(`Minecraft server deployed and assigned to ${panelEmail}.`);
     await loadAll();
-    switchView('instances');
+    switchView('mc-servers');
   } catch (err) {
     showToast(err.message, true);
   } finally {
@@ -3238,6 +3751,10 @@ $('ticketReplyForm').addEventListener('submit', async e => {
   }
 });
 
+const initialHashView = String(location.hash || '').replace(/^#/, '');
+if (VIEW_LABELS[initialHashView]) {
+  switchView(initialHashView);
+}
 loadAll();
 </script>
 </body>
